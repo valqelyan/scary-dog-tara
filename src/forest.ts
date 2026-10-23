@@ -12,11 +12,13 @@ import {
   buildMushrooms,
   buildPuddle,
   grassTime,
+  tickPuddles,
   makeBarkMaterial,
   makeFlowerMaterial,
   makeGrassMaterial,
   makeGroundMaterial,
   makeMushroomMaterial,
+  makePuddleMaterial,
 } from './groundcover';
 
 type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
@@ -53,19 +55,7 @@ type CoverKind = Exclude<Kind, 'tree' | 'rock'>;
 /** Everything except trees and rocks: geometry, material, and the most one cell can hold. */
 const COVER: Record<CoverKind, { geo: () => THREE.BufferGeometry; mat: () => THREE.Material; perCell: number; tinted: boolean }> = {
   grass: { geo: buildGrass, mat: makeGrassMaterial, perCell: GRASS_PER_CELL, tinted: true },
-  puddle: {
-    geo: buildPuddle,
-    mat: () =>
-      new THREE.MeshPhongMaterial({
-        color: 0x04070a,
-        specular: 0xaabbcc,
-        shininess: 140,
-        transparent: true,
-        opacity: 0.9,
-      }),
-    perCell: 1,
-    tinted: false,
-  },
+  puddle: { geo: buildPuddle, mat: makePuddleMaterial, perCell: 1, tinted: false },
   mushroom: { geo: buildMushrooms, mat: makeMushroomMaterial, perCell: 1, tinted: false },
   flower: { geo: buildFlower, mat: makeFlowerMaterial, perCell: 3, tinted: true },
   log: { geo: buildLog, mat: makeBarkMaterial, perCell: 1, tinted: false },
@@ -141,12 +131,52 @@ function cellRocks(ix: number, iz: number): RockSpot[] {
 /** Rock models are scaled so their widest side is 1 unit; grass keeps this much clear beyond that. */
 const ROCK_GRASS_MARGIN = 0.2;
 
+interface PuddleSpot {
+  x: number;
+  z: number;
+  ry: number;
+  sx: number;
+  sz: number;
+}
+
+/** The puddle a cell owns, if any. Deterministic, so neighbours can ask too. */
+function cellPuddle(ix: number, iz: number): PuddleSpot | null {
+  const h = (salt: number) => hash2(ix, iz, salt);
+  if (h(200) >= 0.17) return null;
+  const r = 0.7 + h(201) * 1.5;
+  return { x: ix * CELL + h(202) * CELL, z: iz * CELL + h(203) * CELL, ry: h(204) * TAU, sx: r * (1 + 0.5 * h(205)), sz: r * (0.6 + 0.4 * h(206)) };
+}
+
+/** The painted puddle fills a bit more than one unit of its scale; plants keep this much clear beyond it. */
+const PUDDLE_REACH = 1.05;
+const PUDDLE_MARGIN = 0.25;
+
+function inPuddle(p: PuddleSpot, x: number, z: number): boolean {
+  const dx = x - p.x;
+  const dz = z - p.z;
+  const c = Math.cos(p.ry);
+  const s = Math.sin(p.ry);
+  const lx = (c * dx - s * dz) / (p.sx * PUDDLE_REACH + PUDDLE_MARGIN);
+  const lz = (s * dx + c * dz) / (p.sz * PUDDLE_REACH + PUDDLE_MARGIN);
+  return lx * lx + lz * lz < 1;
+}
+
 function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number): Prop[] {
   const out: Prop[] = [];
   const ox = ix * CELL;
   const oz = iz * CELL;
   const h = (salt: number) => hash2(ix, iz, salt);
   const nearStart = (x: number, z: number) => x * x + z * z < START_CLEAR * START_CLEAR;
+  // Puddles in this cell and its neighbours (the biggest reaches ~3.5 m, under one cell). Rocks may sit
+  // beside or in water, but nothing that grows or stands upright can.
+  const puddles: PuddleSpot[] = [];
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      const p = cellPuddle(ix + dx, iz + dz);
+      if (p) puddles.push(p);
+    }
+  }
+  const inWater = (x: number, z: number) => puddles.some((p) => inPuddle(p, x, z));
   const add = (p: Partial<Prop> & Pick<Prop, 'kind' | 'x' | 'z'>) =>
     out.push({
       variant: 0,
@@ -166,7 +196,7 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     if (h(s0 + 1) > (slot === 0 ? 0.56 : 0.22)) continue;
     const x = ox + (0.1 + 0.8 * h(s0 + 2)) * CELL;
     const z = oz + (0.1 + 0.8 * h(s0 + 3)) * CELL;
-    if (nearStart(x, z)) continue;
+    if (nearStart(x, z) || inWater(x, z)) continue;
     const variant = pickVariant(variants, total, h(s0 + 4));
     const v = variants[variant];
     const s = 0.8 + h(s0 + 5) * 0.4;
@@ -201,20 +231,19 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     const s = 0.8 + h(k) * 0.9;
     const gx = ox + h(k + 1) * CELL;
     const gz = oz + h(k + 2) * CELL;
+    if (inWater(gx, gz)) continue;
     if (nearbyRocks.some((r) => (gx - r.x) ** 2 + (gz - r.z) ** 2 < (0.5 * r.sx + ROCK_GRASS_MARGIN) ** 2)) continue;
     add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s, sy: 0.6 + h(k + 4) * 1.0, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
   }
 
   // Standing water left behind by the rain.
-  if (h(200) < 0.17) {
-    const r = 0.7 + h(201) * 1.5;
-    add({ kind: 'puddle', x: ox + h(202) * CELL, z: oz + h(203) * CELL, ry: h(204) * TAU, sx: r * (1 + 0.5 * h(205)), sz: r * (0.6 + 0.4 * h(206)), shade: 1 });
-  }
+  const ownPuddle = cellPuddle(ix, iz);
+  if (ownPuddle) add({ kind: 'puddle', ...ownPuddle, shade: 1 });
 
   if (h(210) < 0.1) {
     const x = ox + h(211) * CELL;
     const z = oz + h(212) * CELL;
-    add({ kind: 'mushroom', x, z, ry: h(213) * TAU, sx: 0.8 + h(214) * 0.8, sy: 0.8 + h(215) * 0.8, shade: 0.8 + 0.4 * h(216) });
+    if (!inWater(x, z)) add({ kind: 'mushroom', x, z, ry: h(213) * TAU, sx: 0.8 + h(214) * 0.8, sy: 0.8 + h(215) * 0.8, shade: 0.8 + 0.4 * h(216) });
   }
 
   if (h(220) < 0.12) {
@@ -223,14 +252,23 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     const cz = oz + h(223) * CELL;
     const tint = pick(FLOWER_COLORS, h(224));
     for (let i = 0; i < n; i++) {
-      add({ kind: 'flower', x: cx + (h(225 + i) - 0.5) * 0.6, z: cz + (h(230 + i) - 0.5) * 0.6, ry: h(235 + i) * TAU, sx: 0.8 + h(240 + i) * 0.6, sy: 0.7 + h(245 + i) * 0.7, shade: 0.9, tint });
+      const fx = cx + (h(225 + i) - 0.5) * 0.6;
+      const fz = cz + (h(230 + i) - 0.5) * 0.6;
+      if (inWater(fx, fz)) continue;
+      add({ kind: 'flower', x: fx, z: fz, ry: h(235 + i) * TAU, sx: 0.8 + h(240 + i) * 0.6, sy: 0.7 + h(245 + i) * 0.7, shade: 0.9, tint });
     }
   }
 
   if (h(250) < 0.07) {
     const x = ox + h(251) * CELL;
     const z = oz + h(252) * CELL;
-    if (!nearStart(x, z)) add({ kind: 'log', x, z, ry: h(253) * TAU, sx: 0.7 + h(254) * 0.7, sy: 0.8 + h(255) * 0.5, shade: 0.8 + 0.4 * h(256) });
+    const ry = h(253) * TAU;
+    const sx = 0.7 + h(254) * 0.7;
+    // The log runs along its local x axis and is 3.2 m long at scale 1: keep both ends and the middle dry.
+    const ex = Math.cos(ry) * 1.6 * sx;
+    const ez = -Math.sin(ry) * 1.6 * sx;
+    const dry = !inWater(x, z) && !inWater(x + ex, z + ez) && !inWater(x - ex, z - ez);
+    if (!nearStart(x, z) && dry) add({ kind: 'log', x, z, ry, sx, sy: 0.8 + h(255) * 0.5, shade: 0.8 + 0.4 * h(256) });
   }
 
   return out;
@@ -325,6 +363,7 @@ export class Forest {
     // Keep the ground textures pinned to world space while the plane follows the player.
     for (const t of this.groundMaps) t.offset.set(px / GROUND_TILE, -pz / GROUND_TILE);
     grassTime.value = performance.now() / 1000;
+    tickPuddles(grassTime.value);
 
     const cx = Math.floor(px / CELL);
     const cz = Math.floor(pz / CELL);

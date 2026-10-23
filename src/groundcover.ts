@@ -33,8 +33,30 @@ export function buildRock(): THREE.BufferGeometry {
   return paint(g, 0x1b1e20);
 }
 
-/** Dull, dead autumn grass: straw, olive, rust. Multiplied into the grey blade gradient. */
-export const GRASS_COLORS = [0x5a4f26, 0x4a4a24, 0x65532a, 0x3c4222, 0x5a4024, 0x4a3c20];
+/**
+ * One autumn palette shared by the ground litter and the grass, so they read as the same forest.
+ * Picked from common fall palettes: burnt orange, rust, golden, golden brown, coffee brown, olive.
+ */
+export const AUTUMN_PALETTE = {
+  burntOrange: 0xcc5500,
+  rust: 0x9c3b1b,
+  golden: 0xe8a14a,
+  goldenBrown: 0x996515,
+  coffee: 0x6f4e37,
+  olive: 0x6b6b2e,
+  walnut: 0x4a3b2a,
+  straw: 0xd2b48c,
+} as const;
+
+/** Dry autumn grass: straw, gold, olive and brown from the shared palette. Multiplied into the grey blade gradient. */
+export const GRASS_COLORS = [
+  AUTUMN_PALETTE.straw,
+  AUTUMN_PALETTE.golden,
+  AUTUMN_PALETTE.goldenBrown,
+  AUTUMN_PALETTE.olive,
+  AUTUMN_PALETTE.coffee,
+  AUTUMN_PALETTE.goldenBrown,
+].map((hex) => new THREE.Color(hex).lerp(new THREE.Color(AUTUMN_PALETTE.walnut), 0.35).multiplyScalar(0.55).getHex());
 
 /**
  * A tuft of tall, bent grass: a dozen tapered blades, each three segments long so it curves over.
@@ -177,12 +199,179 @@ export function makeGrassMaterial(): THREE.MeshLambertMaterial {
   return mat;
 }
 
-/** A flat disc of standing water, slightly above the ground. */
+/** A flat quad of standing water, slightly above the ground. The texture cuts out the actual puddle shape. */
 export function buildPuddle(): THREE.BufferGeometry {
-  const g = new THREE.CircleGeometry(1, 12);
+  // The painted puddle fills about 0.7 of the quad, so oversize it to keep puddles the size they were.
+  const g = new THREE.PlaneGeometry(2.5, 2.5);
   g.rotateX(-Math.PI / 2);
   g.translate(0, 0.014, 0);
   return g;
+}
+
+const PUDDLE_PX = 256;
+
+/** An irregular, rounded outline. `scale` 1 spans ~0.68 to 0.85 of the cell half-width, leaving room for the soft rim. */
+function puddleBlob(ctx: CanvasRenderingContext2D, scale: number): void {
+  const c = PUDDLE_PX / 2;
+  ctx.beginPath();
+  for (let i = 0; i <= 72; i++) {
+    const a = (i / 72) * TAU;
+    const r =
+      0.68 +
+      0.06 * Math.sin(2 * a + 0.7) +
+      0.05 * Math.sin(3 * a + 2.1) +
+      0.035 * Math.sin(5 * a + 4.2) +
+      0.02 * Math.sin(7 * a + 1.3);
+    const x = c + Math.cos(a) * r * c * scale;
+    const y = c + Math.sin(a) * r * c * scale;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+/** Colour + alpha: soft wet-mud rim, dark water, a faint sky sheen, and a few leaves and specks floating on top. */
+function makePuddleTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = PUDDLE_PX;
+  const ctx = canvas.getContext('2d')!;
+  const c = PUDDLE_PX / 2;
+
+  // Damp ground fading out around the water, then a darker wet-mud ring.
+  ctx.fillStyle = 'rgba(30,22,15,0.07)';
+  for (let i = 0; i < 6; i++) {
+    puddleBlob(ctx, 1.12 - i * 0.02);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(26,19,13,0.6)';
+  puddleBlob(ctx, 1);
+  ctx.fill();
+
+  // The water itself: dark, with a softened edge.
+  ctx.fillStyle = 'rgba(5,9,13,0.07)';
+  for (let i = 0; i < 5; i++) {
+    puddleBlob(ctx, 0.9 - i * 0.02);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(5,9,13,0.9)';
+  puddleBlob(ctx, 0.82);
+  ctx.fill();
+
+  // Pale sky reflection, brighter to one side.
+  ctx.save();
+  puddleBlob(ctx, 0.82);
+  ctx.clip();
+  const sheen = ctx.createRadialGradient(c * 0.8, c * 0.75, 4, c, c, c * 0.8);
+  sheen.addColorStop(0, 'rgba(70,92,116,0.3)');
+  sheen.addColorStop(1, 'rgba(70,92,116,0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, 0, PUDDLE_PX, PUDDLE_PX);
+
+  // Debris on the surface.
+  for (let i = 0; i < 9; i++) {
+    const a = hash2(i, 0, 530) * TAU;
+    const d = Math.sqrt(hash2(i, 1, 530)) * c * 0.55;
+    ctx.fillStyle = `rgba(${hash2(i, 2, 530) < 0.5 ? '96,58,28' : '58,40,22'},${(0.55 + 0.4 * hash2(i, 3, 530)).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.ellipse(c + Math.cos(a) * d, c + Math.sin(a) * d, 2 + hash2(i, 4, 530) * 5, 1.2 + hash2(i, 5, 530) * 2.4, hash2(i, 6, 530) * Math.PI, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Greyscale gloss: the water shines, the muddy rim does not. */
+function makePuddleGloss(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = PUDDLE_PX;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, PUDDLE_PX, PUDDLE_PX);
+  ctx.fillStyle = 'rgb(48,48,48)';
+  puddleBlob(ctx, 1);
+  ctx.fill();
+  ctx.fillStyle = 'rgb(120,120,120)';
+  puddleBlob(ctx, 0.9);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  puddleBlob(ctx, 0.82);
+  ctx.fill();
+  return new THREE.CanvasTexture(canvas);
+}
+
+/** Tileable low-frequency bumps, so the flashlight glint on the water wobbles instead of being a perfect mirror. */
+function makeWaterNormal(): THREE.CanvasTexture {
+  const N = 128;
+  const TILE = 16;
+  const noise = (x: number, y: number, period: number, salt: number) => {
+    const gx = (x / N) * period;
+    const gy = (y / N) * period;
+    const x0 = Math.floor(gx);
+    const y0 = Math.floor(gy);
+    const fx = gx - x0;
+    const fy = gy - y0;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const v = (i: number, j: number) => hash2(((i % period) + period) % period, ((j % period) + period) % period, salt);
+    return v(x0, y0) * (1 - sx) * (1 - sy) + v(x0 + 1, y0) * sx * (1 - sy) + v(x0, y0 + 1) * (1 - sx) * sy + v(x0 + 1, y0 + 1) * sx * sy;
+  };
+  const height = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      height[y * N + x] = noise(x, y, TILE / 2, 540) * 0.6 + noise(x, y, TILE, 541) * 0.3 + noise(x, y, TILE * 2, 542) * 0.1;
+    }
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext('2d')!;
+  const img = ctx.createImageData(N, N);
+  const at = (x: number, y: number) => height[((y + N) % N) * N + ((x + N) % N)];
+  const strength = 6;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const nx = (at(x - 1, y) - at(x + 1, y)) * strength;
+      const ny = (at(x, y - 1) - at(x, y + 1)) * strength;
+      const len = Math.hypot(nx, ny, 1);
+      const i = (y * N + x) * 4;
+      img.data[i] = ((nx / len) * 0.5 + 0.5) * 255;
+      img.data[i + 1] = ((ny / len) * 0.5 + 0.5) * 255;
+      img.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
+let puddleNormal: THREE.CanvasTexture | null = null;
+
+/** Drift the water's bumps a little so the surface is never quite still. Cheap: it only moves a UV offset. */
+export function tickPuddles(time: number): void {
+  if (puddleNormal) puddleNormal.offset.set(time * 0.012, time * 0.008);
+}
+
+export function makePuddleMaterial(): THREE.MeshPhongMaterial {
+  puddleNormal = makeWaterNormal();
+  return new THREE.MeshPhongMaterial({
+    map: makePuddleTexture(),
+    specularMap: makePuddleGloss(),
+    normalMap: puddleNormal,
+    normalScale: new THREE.Vector2(0.3, 0.3),
+    specular: 0xaabbcc,
+    shininess: 140,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
 }
 
 /** A 128x128 canvas split into four 64x64 cells, for the small hand-painted atlases below. */
@@ -487,58 +676,134 @@ export function makeBarkMaterial(): THREE.MeshStandardMaterial {
 }
 
 /** World size of one ground texture tile, in metres. */
-export const GROUND_TILE = 2.5;
+export const GROUND_TILE = 3;
 
 export interface GroundMaterial {
-  material: THREE.MeshStandardMaterial;
+  material: THREE.MeshLambertMaterial;
   /** Textures that must be re-offset as the ground plane follows the player. */
   maps: THREE.Texture[];
 }
 
+const GROUND_PX = 512;
+
 /**
- * Wet autumn forest floor from photo-scanned textures (Poly Haven, CC0): leaf litter, blended with
- * a muddier, glossier texture over large noisy patches, and dimmed/brightened slowly so the tiling
- * doesn't read.
+ * A small hand-painted leaf-litter tile: dark walnut earth covered in flat-coloured autumn leaves.
+ * Everything is drawn wrapped around the edges so the tile repeats without a seam.
  */
-export function makeGroundMaterial(planeSize: number): GroundMaterial {
-  const loader = new THREE.TextureLoader();
-  const base = import.meta.env.BASE_URL + 'ground/';
-  const repeat = planeSize / GROUND_TILE;
-  const load = (file: string, srgb: boolean) => {
-    const t = loader.load(base + file);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(repeat, repeat);
-    t.anisotropy = 8;
-    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-    return t;
+function makeGroundTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = GROUND_PX;
+  const ctx = canvas.getContext('2d')!;
+  const P = AUTUMN_PALETTE;
+  const rnd = (i: number, salt: number) => hash2(i, salt, 560);
+  const css = (hex: number, k: number) => {
+    // Pull every colour part-way towards the earth tone so nothing is a pure, saturated red or orange.
+    const c = new THREE.Color(hex).lerp(new THREE.Color(P.walnut), 0.62);
+    const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255 * k)));
+    return `rgb(${f(c.r)},${f(c.g)},${f(c.b)})`;
   };
-  const map = load('leaves_diff.jpg', true);
-  const normalMap = load('leaves_nor_gl.jpg', false);
-  const roughnessMap = load('leaves_rough.jpg', false);
-  const aoMap = load('leaves_ao.jpg', false);
+  /** Run `draw` at every wrapped offset the shape touches, so it tiles. */
+  const wrapped = (x: number, y: number, r: number, draw: (x: number, y: number) => void) => {
+    for (const ox of [-GROUND_PX, 0, GROUND_PX]) {
+      for (const oy of [-GROUND_PX, 0, GROUND_PX]) {
+        const wx = x + ox;
+        const wy = y + oy;
+        if (wx + r < 0 || wx - r > GROUND_PX || wy + r < 0 || wy - r > GROUND_PX) continue;
+        draw(wx, wy);
+      }
+    }
+  };
 
-  const mudMap = loader.load(base + 'mud_diff.jpg');
-  mudMap.wrapS = mudMap.wrapT = THREE.RepeatWrapping;
-  mudMap.colorSpace = THREE.SRGBColorSpace;
-  mudMap.anisotropy = 8;
-  const mudRough = loader.load(base + 'mud_rough.jpg');
-  mudRough.wrapS = mudRough.wrapT = THREE.RepeatWrapping;
-  mudRough.anisotropy = 8;
+  // Dark earth showing between the leaves, with broad soft patches of darker and lighter damp.
+  ctx.fillStyle = css(P.walnut, 0.7);
+  ctx.fillRect(0, 0, GROUND_PX, GROUND_PX);
+  for (let i = 0; i < 40; i++) {
+    const x = rnd(i, 1) * GROUND_PX;
+    const y = rnd(i, 2) * GROUND_PX;
+    const r = 40 + rnd(i, 3) * 70;
+    const dark = rnd(i, 4) < 0.6;
+    wrapped(x, y, r, (wx, wy) => {
+      const grad = ctx.createRadialGradient(wx, wy, 0, wx, wy, r);
+      grad.addColorStop(0, dark ? 'rgba(10,6,4,0.35)' : 'rgba(120,96,68,0.18)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(wx - r, wy - r, r * 2, r * 2);
+    });
+  }
 
-  const material = new THREE.MeshStandardMaterial({
-    map,
-    normalMap,
-    normalScale: new THREE.Vector2(1.2, 1.2),
-    roughnessMap,
-    aoMap,
-    color: 0x6a5c52,
-    roughness: 1,
-    metalness: 0,
-  });
+  // Leaves: weighted towards the warm colours, each a little lighter or darker than its neighbours.
+  const mix: [number, number][] = [
+    [P.burntOrange, 1.0],
+    [P.rust, 1.0],
+    [P.golden, 0.95],
+    [P.goldenBrown, 1.1],
+    [P.coffee, 1.25],
+    [P.olive, 1.05],
+    [P.straw, 0.8],
+  ];
+  const weights = [4, 6, 8, 30, 30, 12, 10];
+  const total = weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < 950; i++) {
+    let pick = rnd(i, 10) * total;
+    let k = 0;
+    while (pick > weights[k]) pick -= weights[k++];
+    const [hex, dim] = mix[k];
+    const len = 14 + rnd(i, 11) * 16;
+    const wid = len * (0.32 + 0.16 * rnd(i, 12));
+    const ang = rnd(i, 13) * TAU;
+    const x = rnd(i, 14) * GROUND_PX;
+    const y = rnd(i, 15) * GROUND_PX;
+    const fill = css(hex, dim * (0.7 + 0.6 * rnd(i, 16)));
+    wrapped(x, y, len, (wx, wy) => {
+      ctx.save();
+      ctx.translate(wx, wy);
+      ctx.rotate(ang);
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.moveTo(-len / 2, 0);
+      ctx.quadraticCurveTo(0, -wid, len / 2, 0);
+      ctx.quadraticCurveTo(0, wid, -len / 2, 0);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,10,4,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-len / 2, 0);
+      ctx.lineTo(len / 2, 0);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  // A few twigs.
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 18; i++) {
+    const len = 24 + rnd(i, 20) * 40;
+    const ang = rnd(i, 21) * TAU;
+    const x = rnd(i, 22) * GROUND_PX;
+    const y = rnd(i, 23) * GROUND_PX;
+    ctx.strokeStyle = `rgba(30,20,12,${(0.5 + 0.3 * rnd(i, 24)).toFixed(2)})`;
+    ctx.lineWidth = 1.5 + rnd(i, 25) * 1.5;
+    wrapped(x, y, len, (wx, wy) => {
+      ctx.beginPath();
+      ctx.moveTo(wx, wy);
+      ctx.lineTo(wx + Math.cos(ang) * len, wy + Math.sin(ang) * len);
+      ctx.stroke();
+    });
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+export function makeGroundMaterial(planeSize: number): GroundMaterial {
+  const map = makeGroundTexture();
+  map.repeat.set(planeSize / GROUND_TILE, planeSize / GROUND_TILE);
+  const material = new THREE.MeshLambertMaterial({ map });
 
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.mudMap = { value: mudMap };
-    shader.uniforms.mudRough = { value: mudRough };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vGroundXZ;')
       .replace(
@@ -549,8 +814,6 @@ export function makeGroundMaterial(planeSize: number): GroundMaterial {
       .replace(
         '#include <common>',
         `#include <common>
-        uniform sampler2D mudMap;
-        uniform sampler2D mudRough;
         varying vec2 vGroundXZ;
         float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float gNoise(vec2 p) {
@@ -563,22 +826,17 @@ export function makeGroundMaterial(planeSize: number): GroundMaterial {
       )
       .replace(
         '#include <map_fragment>',
-        `float mud = smoothstep(0.5, 0.7, gNoise(vGroundXZ * 0.07) * 0.65 + gNoise(vGroundXZ * 0.19) * 0.35);
+        `// A second, rotated and larger sample breaks up the tile repeat; broad noise patches bare mud and drifts brightness.
         vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-        vec3 mudCol = texture2D( mudMap, vMapUv * 0.8 ).rgb;
-        sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, mudCol * 0.8, mud);
-        // Slow brightness drift hides the repeat.
-        sampledDiffuseColor.rgb *= 0.7 + 0.6 * gNoise(vGroundXZ * 0.23);
+        vec3 second = texture2D( map, mat2(0.8, 0.6, -0.6, 0.8) * vMapUv * 0.37 + 0.31 ).rgb;
+        sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, second, 0.3);
+        float mud = smoothstep(0.6, 0.78, gNoise(vGroundXZ * 0.07) * 0.65 + gNoise(vGroundXZ * 0.19) * 0.35);
+        vec3 mudCol = sampledDiffuseColor.rgb * vec3(0.3, 0.26, 0.22) + vec3(0.006, 0.004, 0.003);
+        sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, mudCol, mud);
+        sampledDiffuseColor.rgb *= 0.78 + 0.45 * gNoise(vGroundXZ * 0.23);
         diffuseColor *= sampledDiffuseColor;`,
-      )
-      .replace(
-        '#include <roughnessmap_fragment>',
-        `float roughnessFactor = roughness * texture2D( roughnessMap, vRoughnessMapUv ).g;
-        float mudGloss = texture2D( mudRough, vMapUv * 0.8 ).g;
-        // Wet ground is glossier, and mud glossiest of all, so the flashlight glints off it.
-        roughnessFactor = mix(roughnessFactor * 0.8, mudGloss * 0.55, mud);`,
       );
   };
 
-  return { material, maps: [map, normalMap, roughnessMap, aoMap] };
+  return { material, maps: [map] };
 }
