@@ -23,6 +23,14 @@ import {
 
 type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
 
+/** Something the dog can investigate. `r` is the trunk radius, or a puddle's rough radius. */
+export interface Poi {
+  kind: 'tree' | 'puddle';
+  x: number;
+  z: number;
+  r: number;
+}
+
 interface Prop {
   kind: Kind;
   variant: number;
@@ -404,6 +412,24 @@ export class Forest {
     this.trees.forEach((b, i) => commit(b, treeCounts[i]));
     this.rocks.forEach((b, i) => commit(b, rockCounts[i]));
     for (const k of COVER_KINDS) commit(this.cover[k], coverCounts[k]);
+  }
+
+  /** Trees and puddles within `radius` of a point, for the dog to go and investigate. */
+  pointsOfInterest(x: number, z: number, radius: number): Poi[] {
+    const out: Poi[] = [];
+    const ix = Math.floor(x / CELL);
+    const iz = Math.floor(z / CELL);
+    const reach = Math.ceil(radius / CELL) + 1;
+    for (let dx = -reach; dx <= reach; dx++) {
+      for (let dz = -reach; dz <= reach; dz++) {
+        for (const p of this.getCell(ix + dx, iz + dz)) {
+          if (p.kind !== 'tree' && p.kind !== 'puddle') continue;
+          if ((p.x - x) ** 2 + (p.z - z) ** 2 > radius * radius) continue;
+          out.push({ kind: p.kind, x: p.x, z: p.z, r: p.kind === 'tree' ? p.r : 0.75 * Math.sqrt(p.sx * p.sz) });
+        }
+      }
+    }
+    return out;
   }
 
   collide(p: THREE.Vector3, radius: number): void {

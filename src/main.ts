@@ -140,6 +140,16 @@ stalker.onBlink = () => {
 };
 stalker.onStep = (dist, pan) => audio.snap(THREE.MathUtils.clamp(1.1 - dist / 22, 0.2, 1), pan);
 
+let lastWhistle = 0;
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyC' || e.repeat || !game.running || game.phase !== 'play') return;
+  const now = performance.now();
+  if (now - lastWhistle < 1200) return;
+  lastWhistle = now;
+  audio.whistle();
+  dog.call();
+});
+
 let lurkerDelay = -1;
 let lurkerHeading = 0;
 

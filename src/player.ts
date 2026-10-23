@@ -205,6 +205,11 @@ export class Player {
     }
   }
 
+  /** Moving fast enough to count as running. */
+  get running(): boolean {
+    return this.speed > 3.3;
+  }
+
   get grounded(): boolean {
     return this.lift <= 0 && this.liftVel <= 0;
   }

@@ -169,6 +169,50 @@ export class GameAudio {
     }
   }
 
+  /** Two rising whistled notes, with a little vibrato and breath. */
+  whistle(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const note = (start: number, dur: number, f0: number, f1: number) => {
+      const t = t0 + start;
+      const osc = ctx.createOscillator();
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.7);
+      osc.frequency.exponentialRampToValueAtTime(f1 * 0.97, t + dur);
+      const vib = ctx.createOscillator();
+      vib.frequency.value = 6.5;
+      const vibDepth = ctx.createGain();
+      vibDepth.gain.value = 28;
+      vib.connect(vibDepth).connect(osc.frequency);
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.2, t + 0.04);
+      g.gain.setValueAtTime(0.2, t + dur - 0.08);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      const breath = ctx.createBufferSource();
+      breath.buffer = this.white;
+      breath.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f1;
+      bp.Q.value = 8;
+      const breathGain = ctx.createGain();
+      breathGain.gain.value = 0.05;
+      breath.connect(bp).connect(breathGain).connect(g);
+
+      osc.connect(g).connect(this.master);
+      for (const node of [osc, vib, breath]) {
+        node.start(t);
+        node.stop(t + dur + 0.05);
+      }
+    };
+    note(0, 0.28, 1700, 2300);
+    note(0.34, 0.5, 1900, 2700);
+  }
+
   setAmbient(level: number): void {
     if (!this.ctx) return;
     this.ambient.gain.setTargetAtTime(level, this.ctx.currentTime, 0.5);
