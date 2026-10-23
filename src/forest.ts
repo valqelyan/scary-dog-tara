@@ -25,7 +25,6 @@ type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log'
 
 interface Prop {
   kind: Kind;
-  /** Index into the generated tree variants, or a random number to pick a rock model (taken modulo). */
   variant: number;
   x: number;
   z: number;
@@ -34,16 +33,12 @@ interface Prop {
   sy: number;
   sz: number;
   shade: number;
-  /** Instance tint (hex), 0 = none. Leaves, flowers, and leafy trees use it. */
   tint: number;
-  /** Collision radius, 0 = walk-through. */
   r: number;
-  /** Trees only: false hides this one's leaves so it stands bare. */
   leafy: boolean;
 }
 
 const CELL = 4.5;
-/** Cells streamed in every direction around the player. */
 const RADIUS = 8;
 const START_CLEAR = 4;
 const TAU = Math.PI * 2;
@@ -52,7 +47,6 @@ const GRASS_PER_CELL = 40;
 
 type CoverKind = Exclude<Kind, 'tree' | 'rock'>;
 
-/** Everything except trees and rocks: geometry, material, and the most one cell can hold. */
 const COVER: Record<CoverKind, { geo: () => THREE.BufferGeometry; mat: () => THREE.Material; perCell: number; tinted: boolean }> = {
   grass: { geo: buildGrass, mat: makeGrassMaterial, perCell: GRASS_PER_CELL, tinted: true },
   puddle: { geo: buildPuddle, mat: makePuddleMaterial, perCell: 1, tinted: false },
@@ -79,7 +73,6 @@ function pick<T>(list: T[], r: number): T {
   return list[Math.min(list.length - 1, Math.floor(r * list.length))];
 }
 
-/** Smooth value noise over cell coordinates, [0, 1). Used for patches of grass. */
 function patchNoise(ix: number, iz: number, scale: number, salt: number): number {
   const x = ix * scale;
   const z = iz * scale;
@@ -118,7 +111,6 @@ function cellRocks(ix: number, iz: number): RockSpot[] {
     const s = 0.5 + h(53) * h(57) * 2.2;
     out.push({ x, z, variant: Math.floor(h(58) * 1000), ry: h(54) * TAU, sx: s, sy: s * (0.75 + 0.25 * h(55)), shade: 0.05 + 0.05 * h(56) });
   }
-  // Smaller rocks fill in where the bushes used to be.
   if (h(60) < 0.3) {
     const x = ox + h(62) * CELL;
     const z = oz + h(63) * CELL;
@@ -139,7 +131,6 @@ interface PuddleSpot {
   sz: number;
 }
 
-/** The puddle a cell owns, if any. Deterministic, so neighbours can ask too. */
 function cellPuddle(ix: number, iz: number): PuddleSpot | null {
   const h = (salt: number) => hash2(ix, iz, salt);
   if (h(200) >= 0.17) return null;
@@ -147,7 +138,6 @@ function cellPuddle(ix: number, iz: number): PuddleSpot | null {
   return { x: ix * CELL + h(202) * CELL, z: iz * CELL + h(203) * CELL, ry: h(204) * TAU, sx: r * (1 + 0.5 * h(205)), sz: r * (0.6 + 0.4 * h(206)) };
 }
 
-/** The painted puddle fills a bit more than one unit of its scale; plants keep this much clear beyond it. */
 const PUDDLE_REACH = 1.05;
 const PUDDLE_MARGIN = 0.25;
 
@@ -220,7 +210,6 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
   const rocks = cellRocks(ix, iz);
   for (const r of rocks) add({ kind: 'rock', ...r, r: 0.42 * r.sx });
 
-  // Dead grass: thick in some stretches of forest, nearly absent in others.
   const lush = Math.max(0, Math.min(1, (patchNoise(ix, iz, 0.18, 400) * 0.7 + patchNoise(ix, iz, 0.55, 401) * 0.3 - 0.32) * 2.2));
   const tufts = Math.min(GRASS_PER_CELL, 2 + Math.round(lush * 34 * (0.7 + 0.6 * h(70))));
   // Nothing grows through a rock; a big one can reach over a cell edge, so check the neighbours' rocks too.
@@ -236,7 +225,6 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s, sy: 0.6 + h(k + 4) * 1.0, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
   }
 
-  // Standing water left behind by the rain.
   const ownPuddle = cellPuddle(ix, iz);
   if (ownPuddle) add({ kind: 'puddle', ...ownPuddle, shade: 1 });
 
@@ -274,16 +262,11 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
   return out;
 }
 
-/** One instanced mesh per drawable part. Parts of one batch share instance data. */
 interface Batch {
   meshes: THREE.InstancedMesh[];
-  /** Which mesh takes the per-instance tint colour, or -1 for none. Others get a plain grey shade. */
   tintMesh: number;
-  /** Brightness applied to the tint, to keep autumn colours dull and dirty. */
   tintScale: number;
-  /** Multiplier on the plain grey shade of untinted meshes. */
   gain?: number;
-  /** meshes[1] is a leaf mesh that individual instances can hide (see Prop.leafy). */
   hideableLeaves?: boolean;
 }
 
@@ -307,7 +290,6 @@ export class Forest {
   private readonly hidden = new THREE.Matrix4().makeScale(1e-4, 1e-4, 1e-4);
 
   constructor() {
-    // Trees are generated once up front, then scattered randomly as instances.
     this.variants = generateTreeVariants();
     this.totalWeight = this.variants.reduce((sum, v) => sum + v.weight, 0);
 
@@ -339,7 +321,6 @@ export class Forest {
     return mesh;
   }
 
-  /** Scanned rock models arrive after startup; once they do, the next frame scatters them. */
   setRocks(variants: RockVariant[]): void {
     for (const v of variants) {
       this.rocks.push({ meshes: [this.makeMesh(v.geo, v.mat, this.cellCount * 2)], tintMesh: -1, tintScale: 1, gain: v.gain });
@@ -357,10 +338,8 @@ export class Forest {
     return c;
   }
 
-  /** Re-centre the streamed world and the ground on the player. */
   update(px: number, pz: number): void {
     this.ground.position.set(px, 0, pz);
-    // Keep the ground textures pinned to world space while the plane follows the player.
     for (const t of this.groundMaps) t.offset.set(px / GROUND_TILE, -pz / GROUND_TILE);
     grassTime.value = performance.now() / 1000;
     tickPuddles(grassTime.value);
@@ -427,7 +406,6 @@ export class Forest {
     for (const k of COVER_KINDS) commit(this.cover[k], coverCounts[k]);
   }
 
-  /** Push a position (x/z only) out of any trunk or rock it overlaps. */
   collide(p: THREE.Vector3, radius: number): void {
     const ix = Math.floor(p.x / CELL);
     const iz = Math.floor(p.z / CELL);

@@ -1,6 +1,5 @@
 import type { Battery } from './battery';
 
-/** A small battery icon: segments drain away as the charge falls, and it turns red when low. */
 export class BatteryHud {
   private fill: HTMLElement;
   private last = -1;
@@ -10,7 +9,6 @@ export class BatteryHud {
   }
 
   update(battery: Battery): void {
-    // Only touch the DOM when the shown charge changes by a visible amount.
     const shown = Math.round(battery.charge * 200);
     if (shown === this.last) return;
     this.last = shown;
@@ -19,7 +17,6 @@ export class BatteryHud {
     this.el.classList.toggle('dead', battery.dead);
   }
 
-  /** Back to a full battery, e.g. at the start of a new night. */
   reset(battery: Battery): void {
     this.last = -1;
     this.update(battery);

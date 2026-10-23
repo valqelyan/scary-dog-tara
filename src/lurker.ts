@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 
-/** A pair of eyes in the distance that vanish once you look straight at them. */
 export class Lurker {
   readonly group = new THREE.Group();
 
@@ -46,7 +45,6 @@ export class Lurker {
 
     this.group.lookAt(camera.position.x, this.group.position.y, camera.position.z);
 
-    // Gone if stared at for a moment, or after enough time has passed.
     camera.getWorldDirection(this.fwd);
     this.toEyes.copy(this.group.position).sub(camera.position).normalize();
     if (this.fwd.dot(this.toEyes) > 0.94) this.watched += dt;
@@ -56,7 +54,6 @@ export class Lurker {
       return;
     }
 
-    // Slow blinks.
     this.blinkT -= dt;
     this.group.scale.y = this.blinkT < 0.12 && this.blinkT > 0 ? 0.1 : 1;
     if (this.blinkT <= -0.001) this.blinkT = 2.5 + Math.random() * 3;

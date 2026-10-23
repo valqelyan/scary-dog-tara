@@ -3,7 +3,6 @@ import { hash2 } from './rng';
 
 const TEX = 256;
 
-/** A pale disc with dark maria, a few craters and darker edges, painted once on a small canvas. */
 function moonTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = TEX;
@@ -15,7 +14,6 @@ function moonTexture(): THREE.CanvasTexture {
   g.arc(mid, mid, mid - 2, 0, Math.PI * 2);
   g.clip();
 
-  // Body, darker towards the limb.
   const body = g.createRadialGradient(mid, mid, 0, mid, mid, mid);
   body.addColorStop(0, '#e4e8ef');
   body.addColorStop(0.7, '#c3c9d6');
@@ -23,7 +21,6 @@ function moonTexture(): THREE.CanvasTexture {
   g.fillStyle = body;
   g.fillRect(0, 0, TEX, TEX);
 
-  // Maria: big soft dark patches.
   for (let i = 0; i < 9; i++) {
     const x = TEX * (0.2 + 0.6 * hash2(i, 0, 91));
     const y = TEX * (0.2 + 0.6 * hash2(i, 1, 91));
@@ -35,7 +32,6 @@ function moonTexture(): THREE.CanvasTexture {
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
 
-  // Craters: a dark floor with a bright rim.
   for (let i = 0; i < 38; i++) {
     const a = hash2(i, 0, 92) * Math.PI * 2;
     const d = Math.sqrt(hash2(i, 1, 92)) * mid * 0.92;
@@ -57,7 +53,6 @@ function moonTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** Soft round falloff for the halo. */
 function glowTexture(): THREE.CanvasTexture {
   const size = 128;
   const c = document.createElement('canvas');
@@ -72,7 +67,6 @@ function glowTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
-/** Textured moon plus a halo: two camera-facing sprites, so it costs next to nothing. */
 export function buildMoon(): THREE.Group {
   const group = new THREE.Group();
 
@@ -93,7 +87,6 @@ export function buildMoon(): THREE.Group {
       depthWrite: false,
       fog: false,
       toneMapped: false,
-      // Keep it dim: it should read as a cold night moon, not a lamp.
       color: 0xb4bccc,
     }),
   );

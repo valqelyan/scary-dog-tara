@@ -7,10 +7,8 @@ const LOOK_MOUSE = 0.0022;
 const LOOK_TOUCH = 0.0055;
 const STICK_RADIUS = 55;
 const GRAVITY = 12;
-/** Takeoff speed: about 0.5 m of air, enough to hop a log, not enough to feel safe. */
 const JUMP_SPEED = 3.4;
 const JUMP_STAMINA = 0.08;
-/** A touch that ends this quickly and barely moved is a tap, which jumps. */
 const TAP_MS = 250;
 const TAP_SLOP = 14;
 
@@ -20,17 +18,14 @@ export class Player {
   yaw = 0;
   pitch = 0;
   speed = 0;
-  /** 0..1. Sprinting drains it; resting refills it. */
   stamina = 1;
   frozen = false;
   private exhausted = false;
-  /** Set when a touch is used; switches movement to analog-stick speeds. */
   touchMode = false;
   onStep?: (sprinting: boolean) => void;
   onJump?: () => void;
   onLand?: () => void;
 
-  /** Eye height above the ground-level eye position; 0 while standing. */
   private lift = 0;
   private liftVel = 0;
   private jumpQueued = false;
@@ -142,7 +137,6 @@ export class Player {
     }
   }
 
-  /** Release every held input (used when pausing). */
   releaseInput(): void {
     this.keys.clear();
     this.jumpQueued = false;
@@ -170,7 +164,7 @@ export class Player {
       ax += this.stickX;
       az -= this.stickY;
     }
-    if (az < 0) az *= 0.55; // backing away is slow
+    if (az < 0) az *= 0.55;
     const len = Math.hypot(ax, az);
     if (len > 1) {
       ax /= len;
@@ -194,7 +188,6 @@ export class Player {
     const tvx = (-sin * az + cos * ax) * maxSpeed;
     const tvz = (-cos * az - sin * ax) * maxSpeed;
 
-    // Little steering once your feet are off the ground.
     const f = 1 - Math.exp(-(this.grounded ? 10 : 2.5) * dt);
     this.vel.x += (tvx - this.vel.x) * f;
     this.vel.z += (tvz - this.vel.z) * f;

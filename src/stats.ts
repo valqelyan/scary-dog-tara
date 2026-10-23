@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 
-/** Estimated GPU bytes for every distinct texture reachable from the scene's materials (RGBA8 plus mips). */
 function textureBytes(scene: THREE.Scene): { count: number; bytes: number } {
   const seen = new Set<THREE.Texture>();
   scene.traverse((o) => {
@@ -19,11 +18,6 @@ function textureBytes(scene: THREE.Scene): { count: number; bytes: number } {
   return { count: seen.size, bytes };
 }
 
-/**
- * Debug overlay: FPS (also shown in the tab title), frame time, draw calls, triangles and an estimate of texture memory.
- * Toggle with F3, or open the page with ?stats. Browsers do not expose real VRAM use,
- * so the texture figure is computed from texture sizes.
- */
 export function createStats(renderer: THREE.WebGLRenderer, scene: THREE.Scene): { update: () => void } {
   const el = document.createElement('pre');
   el.style.cssText =
@@ -46,7 +40,6 @@ export function createStats(renderer: THREE.WebGLRenderer, scene: THREE.Scene): 
   let lastFrame = last;
 
   return {
-    /** Call once per frame, right after renderer.render. */
     update() {
       const now = performance.now();
       worst = Math.max(worst, now - lastFrame);

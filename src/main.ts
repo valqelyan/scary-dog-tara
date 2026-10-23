@@ -34,7 +34,6 @@ const startBtn = document.getElementById('start') as HTMLButtonElement;
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 document.body.classList.toggle('touch', isTouch);
 
-// --- renderer / scene ---
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: window.devicePixelRatio < 2,
@@ -52,7 +51,6 @@ scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
 const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 500);
 scene.add(camera);
 
-// --- lighting: dim moon + cold ambient + a flashlight ---
 const hemi = new THREE.HemisphereLight(0x3a4f70, 0x0a0f0a, 1.1);
 scene.add(hemi);
 const moonLight = new THREE.DirectionalLight(0x6f86b8, 0.9);
@@ -64,7 +62,6 @@ flashlight.position.set(0.15, -0.12, 0);
 flashlight.target.position.set(0, -0.05, -6);
 camera.add(flashlight, flashlight.target);
 
-// --- sky: stars and a pale moon, pinned to the camera ---
 const sky = new THREE.Group();
 {
   const n = 350;
@@ -96,7 +93,6 @@ const sky = new THREE.Group();
 }
 scene.add(sky);
 
-// --- world + actors ---
 const forest = new Forest();
 scene.add(forest.group);
 // Scanned rocks load in the background; if they can't, fall back to the plain procedural one.
@@ -135,7 +131,6 @@ player.onLand = () => audio.step(0.55, 0.6, 0);
 dog.onStep = () => {
   const dx = dog.pos.x - player.pos.x;
   const dz = dog.pos.z - player.pos.z;
-  // Pan by which side of the view the dog is on.
   const pan = (dx * Math.cos(player.yaw) - dz * Math.sin(player.yaw)) * 0.5;
   audio.step(0.12, 1.3 + Math.random() * 0.3, pan);
 };
@@ -148,7 +143,6 @@ stalker.onStep = (dist, pan) => audio.snap(THREE.MathUtils.clamp(1.1 - dist / 22
 let lurkerDelay = -1;
 let lurkerHeading = 0;
 
-// False alarms: the dog stares at nothing and a pair of eyes shows up. Only the stalker can hurt you.
 dog.onAlertStart = (heading) => {
   audio.growl(5.5, Math.sin(heading - player.yaw) * -0.6);
   battery.flicker(0.7);
@@ -160,21 +154,18 @@ dog.onAlertEnd = () => {
   window.setTimeout(() => lurker.hide(), 2500);
 };
 
-// --- sizing ---
 function resize(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  // Keep the dog inside the frame on narrow (portrait) screens too.
   const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   dog.followAngle = THREE.MathUtils.clamp(halfH * 0.4, 0.2, 0.4);
 }
 window.addEventListener('resize', resize);
 resize();
 
-// --- run state ---
 let growlT = 0;
 let lastTime = performance.now();
 
@@ -245,7 +236,6 @@ function caught(): void {
   audio.setAmbient(0);
 }
 
-/** Fog, sky and light respond to how close the stalker is and how near dawn is. */
 const tmpColor = new THREE.Color();
 function applyAtmosphere(threat: number, dawn: number): void {
   tmpColor.copy(NIGHT_COLOR).lerp(DAWN_COLOR, dawn);
@@ -257,7 +247,6 @@ function applyAtmosphere(threat: number, dawn: number): void {
   vignetteEl.style.setProperty('--t', (threat * (1 - dawn)).toFixed(3));
 }
 
-// --- main loop ---
 const stats = createStats(renderer, scene);
 
 function frame(): void {
@@ -291,7 +280,6 @@ function updatePlay(dt: number): void {
   }
   const threat = stalker.threat;
 
-  // The dog knows first. It stares at the stalker and growls harder the closer it gets.
   if (stalker.active && threat > 0.04) {
     const sp = stalker.group.position;
     dog.threatHeading = Math.atan2(sp.x - dog.pos.x, sp.z - dog.pos.z);
@@ -321,11 +309,9 @@ function updatePlay(dt: number): void {
   audio.tick(dt, threat);
   applyAtmosphere(threat, dawn);
 
-  // Flashlight: the battery decides how bright it is and how steady.
   flashlight.intensity = FLASH_BASE * battery.update(dt, threat);
   batteryHud.update(battery);
 
-  // Your own nerves: the view trembles as it gets close.
   if (threat > 0.3) {
     const s = (threat - 0.3) * 0.012;
     camera.rotation.x += (Math.random() - 0.5) * s;
@@ -352,7 +338,6 @@ function updatePlay(dt: number): void {
 function updateCaught(dt: number): void {
   game.caughtT += dt;
   stalker.shake(0.05 + game.caughtT * 0.04);
-  // Snap your view up into its face and hold it there.
   player.pitch += (0.42 - player.pitch) * Math.min(1, dt * 14);
   player.applyToCamera(camera);
   camera.rotation.z += (Math.random() - 0.5) * 0.08;
@@ -375,7 +360,6 @@ function updateCaught(dt: number): void {
   }
 }
 
-// Reset fog/sky to the opening state in case the page is restored mid-run.
 applyAtmosphere(0, 0);
 frame();
 

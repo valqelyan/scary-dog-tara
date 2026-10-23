@@ -1,6 +1,5 @@
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
 
-/** All sound is synthesised at runtime, so there are no audio assets to ship. */
 export class GameAudio {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
@@ -78,10 +77,9 @@ export class GameAudio {
       lfo.start();
     };
 
-    layer('lowpass', 520, 0.16, 0.07, 0.09); // slow wind swells
-    layer('bandpass', 1300, 0.05, 0.12, 0.04); // rustling leaves
+    layer('lowpass', 520, 0.16, 0.07, 0.09);
+    layer('bandpass', 1300, 0.05, 0.12, 0.04);
 
-    // Low unsettling drone: two slightly detuned tones beat against each other.
     for (const [freq, gain, type] of [
       [43, 0.06, 'sine'],
       [44.3, 0.06, 'sine'],
@@ -108,7 +106,6 @@ export class GameAudio {
     }
   }
 
-  /** A drop of rainwater falling from a branch onto a puddle, with a faint echo. */
   private drip(): void {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -128,7 +125,6 @@ export class GameAudio {
       g.gain.linearRampToValueAtTime(vol * v, t + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
       o.connect(g);
-      // Through the ambient bus, so drips go quiet when the stalker draws near.
       this.out(g, pan * (delay ? 0.8 : 1), this.ambient);
       o.start(t);
       o.stop(t + 0.15);
@@ -161,13 +157,11 @@ export class GameAudio {
     src.start(t, Math.random() * 2, opts.attack + opts.decay + 0.05);
   }
 
-  /** Crunchy footstep on leaves. `vol` ~0.1-0.4, `pitch` ~0.7-1.3. */
   step(vol: number, pitch = 1, pan = 0): void {
     this.burst({ type: 'lowpass', freq: 800 * pitch, vol, attack: 0.012, decay: 0.16, pan });
     this.burst({ type: 'bandpass', freq: 2400 * pitch, vol: vol * 0.3, attack: 0.008, decay: 0.08, pan });
   }
 
-  /** Dry twig snapping somewhere out in the dark. */
   snap(vol = 1, pan = Math.random() * 2 - 1): void {
     this.burst({ type: 'highpass', freq: 2200, vol: 0.5 * vol, attack: 0.002, decay: 0.05, pan });
     if (Math.random() < 0.6) {
@@ -175,13 +169,11 @@ export class GameAudio {
     }
   }
 
-  /** Duck (or restore) the wind/drone bed. Sudden silence is scarier than noise. */
   setAmbient(level: number): void {
     if (!this.ctx) return;
     this.ambient.gain.setTargetAtTime(level, this.ctx.currentTime, 0.5);
   }
 
-  /** One lub-dub heartbeat. */
   private heartbeat(vol: number): void {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -203,7 +195,6 @@ export class GameAudio {
     }
   }
 
-  /** Full-volume stinger for getting caught. */
   scream(): void {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -275,7 +266,6 @@ export class GameAudio {
     lp.frequency.value = 280;
     lp.Q.value = 4;
 
-    // Amplitude wobble gives the rattling quality of a growl.
     const am = ctx.createGain();
     am.gain.value = 0.6;
     const lfo = ctx.createOscillator();
@@ -293,7 +283,6 @@ export class GameAudio {
     osc.connect(lp).connect(am).connect(env);
     this.out(env, pan);
 
-    // Breathy noise on top.
     const n = ctx.createBufferSource();
     n.buffer = this.white;
     n.loop = true;
@@ -316,7 +305,6 @@ export class GameAudio {
     n.stop(end + 0.1);
   }
 
-  /** `threat` is 0..1; drives the heartbeat rate and volume. */
   tick(dt: number, threat = 0): void {
     if (!this.ctx) return;
     if (threat > 0.05) {

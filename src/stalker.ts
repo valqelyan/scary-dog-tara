@@ -11,7 +11,6 @@ function box(w: number, h: number, d: number, hex: number, x = 0, y = 0, z = 0):
     new THREE.MeshLambertMaterial({
       color: hex,
       flatShading: true,
-      // The pale face glows faintly so it floats out of the dark.
       emissive: hex === SKIN ? new THREE.Color(hex).multiplyScalar(0.3) : new THREE.Color(0x000000),
     }),
   );
@@ -23,19 +22,12 @@ const SPAWN_DIST = 24;
 const CATCH_DIST = 1.4;
 const FIRST_SPAWN = 30;
 
-/**
- * A tall figure that only moves while you are not looking at it.
- * Stare at it too long and it blinks closer; let it reach you and it's over.
- */
 export class Stalker {
   readonly group = new THREE.Group();
   active = false;
-  /** 0..1, how dangerous it is right now (distance based). */
   threat = 0;
-  /** Seconds the player has been watching it. */
   watched = 0;
   onStep?: (dist: number, pan: number) => void;
-  /** Fired when it blinks out and comes back closer. */
   onBlink?: () => void;
 
   private spawnTimer = FIRST_SPAWN;
@@ -87,7 +79,6 @@ export class Stalker {
     this.spawnTimer = FIRST_SPAWN;
   }
 
-  /** Banish it for a while (dawn, or after being stared down). */
   retreat(cooldown: number): void {
     this.blinkT = 0;
     this.active = false;
@@ -98,9 +89,8 @@ export class Stalker {
   }
 
   private spawn(player: Player): void {
-    // Somewhere behind or beside you, out of sight.
     const side = Math.random() < 0.5 ? -1 : 1;
-    const a = player.yaw + side * (1.8 + Math.random() * 1.2); // ~100°-170° from where you look
+    const a = player.yaw + side * (1.8 + Math.random() * 1.2);
     this.group.position.set(
       player.pos.x - Math.sin(a) * SPAWN_DIST,
       0,
@@ -114,7 +104,6 @@ export class Stalker {
     this.restPose(0);
   }
 
-  /** Is the figure inside the camera's view right now? */
   private inView(camera: THREE.PerspectiveCamera): boolean {
     camera.updateMatrixWorld();
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -124,7 +113,6 @@ export class Stalker {
     return this.frustum.intersectsSphere(this.sphere);
   }
 
-  /** Stop-motion twitch: a new slightly wrong pose every time it moves. */
   private restPose(amount: number): void {
     const r = () => (Math.random() - 0.5) * 2;
     this.pose.rotation.z = r() * 0.07 * amount;
@@ -137,11 +125,6 @@ export class Stalker {
     this.head.rotation.x = 0.1 + r() * 0.25 * amount;
   }
 
-  /**
-   * @param progress 0..1 through the night
-   * @param dawning  stop spawning and flee
-   * @returns true once it has caught the player
-   */
   update(
     dt: number,
     player: Player,
@@ -165,7 +148,6 @@ export class Stalker {
     let dz = player.pos.z - pos.z;
     let dist = Math.hypot(dx, dz);
 
-    // Outrun it completely and it simply turns up closer, behind you again.
     if (dist > 42) {
       this.spawn(player);
       dx = player.pos.x - pos.x;
@@ -177,14 +159,12 @@ export class Stalker {
     if (seen) this.watched += dt;
     else this.watched = Math.max(0, this.watched - dt * 0.5);
 
-    // Mid-blink: gone for a moment.
     if (this.blinkT > 0) {
       this.blinkT -= dt;
       if (this.blinkT <= 0) this.group.visible = true;
       return false;
     }
 
-    // Staring is not safe. Look too long and the lights stutter; when they return it is much closer.
     if (this.watched > 4 && dist > 7) {
       const to = Math.max(6, dist * 0.6);
       pos.x = player.pos.x - (dx / dist) * to;
@@ -198,7 +178,7 @@ export class Stalker {
 
     let speed = 0;
     if (!seen) speed = 2.8 + 1.4 * progress;
-    else if (dist < 5) speed = 0.7; // even watched, it creeps when it's this close
+    else if (dist < 5) speed = 0.7;
     if (dist < 7 && !seen) speed *= 1.25;
 
     if (speed > 0 && dist > 1e-4) {
@@ -224,7 +204,6 @@ export class Stalker {
     return dist < CATCH_DIST;
   }
 
-  /** Jumpscare framing: right in your face, towering over the camera. */
   placeInFront(player: Player): void {
     const f = 1.0;
     this.group.position.set(player.pos.x - Math.sin(player.yaw) * f, 0, player.pos.z - Math.cos(player.yaw) * f);

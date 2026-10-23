@@ -4,9 +4,7 @@ import { hash2 } from './rng';
 
 const TAU = Math.PI * 2;
 
-/** Dull, dirty autumn colours: burnt orange, rust, ochre, brown. Multiplied into the leaf texture. */
 export const AUTUMN_LEAVES = [0x8a4a22, 0x7a3a1c, 0x8a6a2c, 0x6a4624, 0x5a2a16, 0x4a3c1c];
-/** Faded flowers: nothing bright survives here. */
 export const FLOWER_COLORS = [0x7a6a8f, 0x9a8a3a, 0xa8a49a, 0x8a4a3a, 0x6a7a9a];
 
 export function paint(geo: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
@@ -33,10 +31,6 @@ export function buildRock(): THREE.BufferGeometry {
   return paint(g, 0x1b1e20);
 }
 
-/**
- * One autumn palette shared by the ground litter and the grass, so they read as the same forest.
- * Picked from common fall palettes: burnt orange, rust, golden, golden brown, coffee brown, olive.
- */
 export const AUTUMN_PALETTE = {
   burntOrange: 0xcc5500,
   rust: 0x9c3b1b,
@@ -48,7 +42,6 @@ export const AUTUMN_PALETTE = {
   straw: 0xd2b48c,
 } as const;
 
-/** Dry autumn grass: straw, gold, olive and brown from the shared palette. Multiplied into the grey blade gradient. */
 export const GRASS_COLORS = [
   AUTUMN_PALETTE.straw,
   AUTUMN_PALETTE.golden,
@@ -58,10 +51,6 @@ export const GRASS_COLORS = [
   AUTUMN_PALETTE.goldenBrown,
 ].map((hex) => new THREE.Color(hex).lerp(new THREE.Color(AUTUMN_PALETTE.walnut), 0.35).multiplyScalar(0.55).getHex());
 
-/**
- * A tuft of tall, bent grass: a dozen tapered blades, each three segments long so it curves over.
- * Vertex colours are a grey gradient (dark root, pale tip); the per-instance tint adds the hue.
- */
 export function buildGrass(): THREE.BufferGeometry {
   const pos: number[] = [];
   const col: number[] = [];
@@ -82,7 +71,6 @@ export function buildGrass(): THREE.BufferGeometry {
     const bx = Math.cos(a) * r;
     const bz = Math.sin(a) * r;
 
-    // One ring per row; the last ring is the single tip vertex.
     const ring: [number, number, number, number, number, number, number, number][] = [];
     for (let k = 0; k < rows; k++) {
       const t = k / (rows - 1);
@@ -94,7 +82,6 @@ export function buildGrass(): THREE.BufferGeometry {
       const shade = 0.22 + 0.78 * t;
       ring.push([cx - px * hw, y, cz - pz * hw, cx + px * hw, y, cz + pz * hw, shade, t]);
     }
-    // u runs across the blade (left 0, right 1, the tip is a point at 0.5), v from root to tip.
     const v = (x: number, y: number, z: number, shade: number, u: number, t: number) => {
       pos.push(x, y, z);
       col.push(shade, shade, shade);
@@ -119,7 +106,6 @@ export function buildGrass(): THREE.BufferGeometry {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  // Light every blade as if it faced up, so both sides catch the flashlight the same way.
   const up = new Float32Array(pos.length);
   for (let i = 1; i < up.length; i += 3) up[i] = 1;
   g.setAttribute('normal', new THREE.BufferAttribute(up, 3));
@@ -129,10 +115,6 @@ export function buildGrass(): THREE.BufferGeometry {
 /** Shared clock for the grass sway; the forest advances it every frame. */
 export const grassTime = { value: 0 };
 
-/**
- * A plain blade texture drawn on a canvas: pale centre vein, fine lengthwise streaks, darker edges.
- * It averages a bit under white so it multiplies into the tint without dimming the grass much.
- */
 function makeGrassTexture(): THREE.CanvasTexture {
   const W = 64;
   const H = 128;
@@ -143,13 +125,11 @@ function makeGrassTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#d8d8d8';
   ctx.fillRect(0, 0, W, H);
 
-  // Fine veins running root to tip.
   for (let x = 0; x < W; x++) {
     const n = hash2(x, 0, 410);
     ctx.fillStyle = `rgba(${n < 0.5 ? '0,0,0' : '255,255,255'},${(0.04 + 0.16 * hash2(x, 1, 410)).toFixed(3)})`;
     ctx.fillRect(x, 0, 1 + Math.floor(hash2(x, 2, 410) * 2), H);
   }
-  // Slightly darker towards both edges.
   const edge = ctx.createLinearGradient(0, 0, W, 0);
   edge.addColorStop(0, 'rgba(0,0,0,0.35)');
   edge.addColorStop(0.28, 'rgba(0,0,0,0)');
@@ -157,13 +137,11 @@ function makeGrassTexture(): THREE.CanvasTexture {
   edge.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = edge;
   ctx.fillRect(0, 0, W, H);
-  // The midrib: a pale line down the middle with a darker groove either side.
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.fillRect(W / 2 - 4, 0, 2, H);
   ctx.fillRect(W / 2 + 2, 0, 2, H);
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.fillRect(W / 2 - 1, 0, 2, H);
-  // A few short cross-flecks so it isn't perfectly striped.
   for (let i = 0; i < 40; i++) {
     ctx.fillStyle = `rgba(0,0,0,${(0.05 + 0.1 * hash2(i, 3, 410)).toFixed(3)})`;
     ctx.fillRect(hash2(i, 4, 410) * W, hash2(i, 5, 410) * H, 1, 3 + hash2(i, 6, 410) * 8);
@@ -184,7 +162,6 @@ export function makeGrassMaterial(): THREE.MeshLambertMaterial {
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-        // Blades bend more towards the tip, and each tuft sways on its own phase.
         float bendAmt = position.y * position.y;
         vec3 ip = instanceMatrix[3].xyz;
         transformed.x += sin(uTime * 1.7 + ip.x * 0.65 + ip.z * 0.41) * bendAmt * 0.16;
@@ -199,7 +176,6 @@ export function makeGrassMaterial(): THREE.MeshLambertMaterial {
   return mat;
 }
 
-/** A flat quad of standing water, slightly above the ground. The texture cuts out the actual puddle shape. */
 export function buildPuddle(): THREE.BufferGeometry {
   // The painted puddle fills about 0.7 of the quad, so oversize it to keep puddles the size they were.
   const g = new THREE.PlaneGeometry(2.5, 2.5);
@@ -210,7 +186,6 @@ export function buildPuddle(): THREE.BufferGeometry {
 
 const PUDDLE_PX = 256;
 
-/** An irregular, rounded outline. `scale` 1 spans ~0.68 to 0.85 of the cell half-width, leaving room for the soft rim. */
 function puddleBlob(ctx: CanvasRenderingContext2D, scale: number): void {
   const c = PUDDLE_PX / 2;
   ctx.beginPath();
@@ -230,14 +205,12 @@ function puddleBlob(ctx: CanvasRenderingContext2D, scale: number): void {
   ctx.closePath();
 }
 
-/** Colour + alpha: soft wet-mud rim, dark water, a faint sky sheen, and a few leaves and specks floating on top. */
 function makePuddleTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = PUDDLE_PX;
   const ctx = canvas.getContext('2d')!;
   const c = PUDDLE_PX / 2;
 
-  // Damp ground fading out around the water, then a darker wet-mud ring.
   ctx.fillStyle = 'rgba(30,22,15,0.07)';
   for (let i = 0; i < 6; i++) {
     puddleBlob(ctx, 1.12 - i * 0.02);
@@ -247,7 +220,6 @@ function makePuddleTexture(): THREE.CanvasTexture {
   puddleBlob(ctx, 1);
   ctx.fill();
 
-  // The water itself: dark, with a softened edge.
   ctx.fillStyle = 'rgba(5,9,13,0.07)';
   for (let i = 0; i < 5; i++) {
     puddleBlob(ctx, 0.9 - i * 0.02);
@@ -257,7 +229,6 @@ function makePuddleTexture(): THREE.CanvasTexture {
   puddleBlob(ctx, 0.82);
   ctx.fill();
 
-  // Pale sky reflection, brighter to one side.
   ctx.save();
   puddleBlob(ctx, 0.82);
   ctx.clip();
@@ -267,7 +238,6 @@ function makePuddleTexture(): THREE.CanvasTexture {
   ctx.fillStyle = sheen;
   ctx.fillRect(0, 0, PUDDLE_PX, PUDDLE_PX);
 
-  // Debris on the surface.
   for (let i = 0; i < 9; i++) {
     const a = hash2(i, 0, 530) * TAU;
     const d = Math.sqrt(hash2(i, 1, 530)) * c * 0.55;
@@ -284,7 +254,6 @@ function makePuddleTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** Greyscale gloss: the water shines, the muddy rim does not. */
 function makePuddleGloss(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = PUDDLE_PX;
@@ -303,7 +272,6 @@ function makePuddleGloss(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(canvas);
 }
 
-/** Tileable low-frequency bumps, so the flashlight glint on the water wobbles instead of being a perfect mirror. */
 function makeWaterNormal(): THREE.CanvasTexture {
   const N = 128;
   const TILE = 16;
@@ -352,7 +320,6 @@ function makeWaterNormal(): THREE.CanvasTexture {
 
 let puddleNormal: THREE.CanvasTexture | null = null;
 
-/** Drift the water's bumps a little so the surface is never quite still. Cheap: it only moves a UV offset. */
 export function tickPuddles(time: number): void {
   if (puddleNormal) puddleNormal.offset.set(time * 0.012, time * 0.008);
 }
@@ -374,7 +341,6 @@ export function makePuddleMaterial(): THREE.MeshPhongMaterial {
   });
 }
 
-/** A 128x128 canvas split into four 64x64 cells, for the small hand-painted atlases below. */
 const ATLAS = 128;
 const CELL_PX = 64;
 
@@ -405,7 +371,6 @@ function toCell(g: THREE.BufferGeometry, [cx, cy]: Cell): THREE.BufferGeometry {
   return g;
 }
 
-/** Top-down UVs for a dome or disc of the given radius: the centre of the texture sits on the axis. */
 function planarUV(g: THREE.BufferGeometry, radius: number): THREE.BufferGeometry {
   const p = g.attributes.position;
   const uv = g.attributes.uv;
@@ -427,7 +392,6 @@ function makeMushroomTexture(): THREE.CanvasTexture {
   const rnd = (i: number, salt: number) => hash2(i, salt, 510);
   const c = CELL_PX / 2;
 
-  // Stem: pale and fibrous, going to dirt at the root (the bottom of the cell).
   {
     const [x0, y0] = MUSHROOM_STEM;
     ctx.fillStyle = '#cdc4ae';
@@ -443,7 +407,6 @@ function makeMushroomTexture(): THREE.CanvasTexture {
     ctx.fillRect(x0, y0, CELL_PX, CELL_PX);
   }
 
-  // Cap seen from above: dark leathery brown, paler towards the rim, with fine radial fibres and a few veil flecks.
   {
     const [x0, y0] = MUSHROOM_CAP;
     const g = ctx.createRadialGradient(x0 + c, y0 + c, 2, x0 + c, y0 + c, c);
@@ -472,7 +435,6 @@ function makeMushroomTexture(): THREE.CanvasTexture {
     }
   }
 
-  // Underside: pale radial gills round a darker stem scar.
   {
     const [x0, y0] = MUSHROOM_GILLS;
     ctx.fillStyle = '#a89878';
@@ -499,7 +461,6 @@ export function makeMushroomMaterial(): THREE.MeshLambertMaterial {
   return new THREE.MeshLambertMaterial({ map: makeMushroomTexture(), vertexColors: true, side: THREE.DoubleSide });
 }
 
-/** A small cluster of mushrooms: textured stems, domed caps, and gills underneath. */
 export function buildMushrooms(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const spots: [number, number, number][] = [
@@ -540,7 +501,6 @@ function makeFlowerTexture(): THREE.CanvasTexture {
   const rnd = (i: number, salt: number) => hash2(i, salt, 520);
   const c = CELL_PX / 2;
 
-  // Petals: near-white so the per-flower tint colours them. Transparent between petals (alpha-tested).
   {
     const [x0, y0] = FLOWER_PETALS;
     const n = 10;
@@ -572,7 +532,6 @@ function makeFlowerTexture(): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // Leaf: lanceolate, pointing up the cell, with a pale midrib.
   {
     const [x0, y0] = FLOWER_LEAF;
     ctx.fillStyle = '#2a3a1e';
@@ -599,7 +558,6 @@ function makeFlowerTexture(): THREE.CanvasTexture {
     }
   }
 
-  // Stem: dark green with fibres, fully opaque.
   {
     const [x0, y0] = FLOWER_STEM;
     ctx.fillStyle = '#243219';
@@ -617,7 +575,6 @@ export function makeFlowerMaterial(): THREE.MeshLambertMaterial {
   return new THREE.MeshLambertMaterial({ map: makeFlowerTexture(), vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide });
 }
 
-/** A wilted flower: textured stem, two basal leaves, and a drooping petal head that takes the instance tint. */
 export function buildFlower(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const stem = new THREE.CylinderGeometry(0.006, 0.009, 0.3, 4, 1, true);
@@ -640,7 +597,6 @@ export function buildFlower(): THREE.BufferGeometry {
   return mergeGeometries(parts, false)!;
 }
 
-/** A rotting fallen log. UVs run around the trunk (u) and along it (v), ready for a bark texture. */
 export function buildLog(): THREE.BufferGeometry {
   const body = new THREE.CylinderGeometry(0.17, 0.21, 3.2, 10);
   body.rotateZ(Math.PI / 2);
@@ -652,14 +608,12 @@ export function buildLog(): THREE.BufferGeometry {
   return mergeGeometries([body, stub], false)!;
 }
 
-/** Wet, dark bark for the fallen logs (ez-tree's oak bark, MIT). Tinted down so it stays gloomy. */
 export function makeBarkMaterial(): THREE.MeshStandardMaterial {
   const loader = new THREE.TextureLoader();
   const base = import.meta.env.BASE_URL + 'bark/';
   const load = (file: string, srgb: boolean) => {
     const t = loader.load(base + file);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    // About one wrap around the trunk and a few along its length.
     t.repeat.set(1, 3);
     t.anisotropy = 8;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;
@@ -675,21 +629,15 @@ export function makeBarkMaterial(): THREE.MeshStandardMaterial {
   });
 }
 
-/** World size of one ground texture tile, in metres. */
 export const GROUND_TILE = 3;
 
 export interface GroundMaterial {
   material: THREE.MeshLambertMaterial;
-  /** Textures that must be re-offset as the ground plane follows the player. */
   maps: THREE.Texture[];
 }
 
 const GROUND_PX = 512;
 
-/**
- * A small hand-painted leaf-litter tile: dark walnut earth covered in flat-coloured autumn leaves.
- * Everything is drawn wrapped around the edges so the tile repeats without a seam.
- */
 function makeGroundTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = GROUND_PX;
@@ -697,7 +645,6 @@ function makeGroundTexture(): THREE.CanvasTexture {
   const P = AUTUMN_PALETTE;
   const rnd = (i: number, salt: number) => hash2(i, salt, 560);
   const css = (hex: number, k: number) => {
-    // Pull every colour part-way towards the earth tone so nothing is a pure, saturated red or orange.
     const c = new THREE.Color(hex).lerp(new THREE.Color(P.walnut), 0.62);
     const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255 * k)));
     return `rgb(${f(c.r)},${f(c.g)},${f(c.b)})`;
@@ -714,7 +661,6 @@ function makeGroundTexture(): THREE.CanvasTexture {
     }
   };
 
-  // Dark earth showing between the leaves, with broad soft patches of darker and lighter damp.
   ctx.fillStyle = css(P.walnut, 0.7);
   ctx.fillRect(0, 0, GROUND_PX, GROUND_PX);
   for (let i = 0; i < 40; i++) {
@@ -731,7 +677,6 @@ function makeGroundTexture(): THREE.CanvasTexture {
     });
   }
 
-  // Leaves: weighted towards the warm colours, each a little lighter or darker than its neighbours.
   const mix: [number, number][] = [
     [P.burntOrange, 1.0],
     [P.rust, 1.0],
@@ -774,7 +719,6 @@ function makeGroundTexture(): THREE.CanvasTexture {
     });
   }
 
-  // A few twigs.
   ctx.lineCap = 'round';
   for (let i = 0; i < 18; i++) {
     const len = 24 + rnd(i, 20) * 40;
@@ -826,8 +770,7 @@ export function makeGroundMaterial(planeSize: number): GroundMaterial {
       )
       .replace(
         '#include <map_fragment>',
-        `// A second, rotated and larger sample breaks up the tile repeat; broad noise patches bare mud and drifts brightness.
-        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+        `vec4 sampledDiffuseColor = texture2D( map, vMapUv );
         vec3 second = texture2D( map, mat2(0.8, 0.6, -0.6, 0.8) * vMapUv * 0.37 + 0.31 ).rgb;
         sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, second, 0.3);
         float mud = smoothstep(0.6, 0.78, gNoise(vGroundXZ * 0.07) * 0.65 + gNoise(vGroundXZ * 0.19) * 0.35);
