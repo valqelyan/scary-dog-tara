@@ -110,6 +110,16 @@ const player = new Player(
   document.getElementById('stick-knob') as HTMLElement,
 );
 const dog = new Dog();
+{
+  // ?distraction=0..1 sets how easily the dog gets sidetracked (0.5 if left out), and ?playful=0..1 how playful she is (0.7).
+  const params = new URLSearchParams(location.search);
+  const level = (name: string, fallback: number) => {
+    const asked = parseFloat(params.get(name) ?? '');
+    return Number.isFinite(asked) ? asked : fallback;
+  };
+  dog.distraction = level('distraction', 0.5);
+  dog.playfulness = level('playful', 0.7);
+}
 scene.add(dog.group);
 const lurker = new Lurker();
 scene.add(lurker.group);

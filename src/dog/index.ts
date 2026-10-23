@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { Forest } from './forest';
-import type { Player } from './player';
-import { DogBrain } from './dogbrain';
-import { DogModel } from './dogmodel';
+import type { Forest } from '../forest';
+import type { Player } from '../player';
+import { DogBrain } from './brain';
+import { DogModel } from './model';
 
 /** The dog: a brain that decides what to do, and a model that shows it. This is what the rest of the game talks to. */
 export class Dog {
@@ -29,6 +29,30 @@ export class Dog {
 
   set followAngle(angle: number) {
     this.brain.followAngle = angle;
+  }
+
+  get alarms(): boolean {
+    return this.brain.alarms;
+  }
+
+  set alarms(on: boolean) {
+    this.brain.alarms = on;
+  }
+
+  get playfulness(): number {
+    return this.brain.playfulness;
+  }
+
+  set playfulness(level: number) {
+    this.brain.playfulness = Math.min(1, Math.max(0, level));
+  }
+
+  get distraction(): number {
+    return this.brain.distraction;
+  }
+
+  set distraction(level: number) {
+    this.brain.distraction = Math.min(1, Math.max(0, level));
   }
 
   get threatHeading(): number | null {
