@@ -20,7 +20,7 @@ function textureBytes(scene: THREE.Scene): { count: number; bytes: number } {
 }
 
 /**
- * Debug overlay: FPS, frame time, draw calls, triangles and an estimate of texture memory.
+ * Debug overlay: FPS (also shown in the tab title), frame time, draw calls, triangles and an estimate of texture memory.
  * Toggle with F3, or open the page with ?stats. Browsers do not expose real VRAM use,
  * so the texture figure is computed from texture sizes.
  */
@@ -58,6 +58,7 @@ export function createStats(renderer: THREE.WebGLRenderer, scene: THREE.Scene): 
       last = now;
       const w = worst;
       worst = 0;
+      document.title = `${fps.toFixed(0)} fps`;
       if (!visible) return;
       const { render, memory } = renderer.info;
       const tex = textureBytes(scene);
