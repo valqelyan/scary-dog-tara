@@ -6,8 +6,6 @@ const TAU = Math.PI * 2;
 
 /** Dull, dirty autumn colours: burnt orange, rust, ochre, brown. Multiplied into the leaf texture. */
 export const AUTUMN_LEAVES = [0x8a4a22, 0x7a3a1c, 0x8a6a2c, 0x6a4624, 0x5a2a16, 0x4a3c1c];
-/** Fallen leaves on the ground; same idea, a little browner as they rot. */
-export const LITTER_COLORS = [0x7a4220, 0x5a2c14, 0x806a2a, 0x40281a, 0x6a2a16, 0x34261a, 0x504420];
 /** Faded flowers: nothing bright survives here. */
 export const FLOWER_COLORS = [0x7a6a8f, 0x9a8a3a, 0xa8a49a, 0x8a4a3a, 0x6a7a9a];
 
@@ -177,18 +175,6 @@ export function makeGrassMaterial(): THREE.MeshLambertMaterial {
     );
   };
   return mat;
-}
-
-/** A single flat fallen leaf. Tinted per-instance. */
-export function buildLeaf(): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute([0, 0.02, -0.11, 0.07, 0.025, 0, 0, 0.02, 0.11, -0.07, 0.025, 0], 3),
-  );
-  g.setIndex([0, 1, 2, 0, 2, 3]);
-  g.computeVertexNormals();
-  return g;
 }
 
 /** A flat disc of standing water, slightly above the ground. */

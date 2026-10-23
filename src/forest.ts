@@ -6,10 +6,8 @@ import {
   FLOWER_COLORS,
   GRASS_COLORS,
   GROUND_TILE,
-  LITTER_COLORS,
   buildFlower,
   buildGrass,
-  buildLeaf,
   buildLog,
   buildMushrooms,
   buildPuddle,
@@ -21,7 +19,7 @@ import {
   makeMushroomMaterial,
 } from './groundcover';
 
-type Kind = 'tree' | 'rock' | 'grass' | 'leaf' | 'puddle' | 'mushroom' | 'flower' | 'log';
+type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
 
 interface Prop {
   kind: Kind;
@@ -55,7 +53,6 @@ type CoverKind = Exclude<Kind, 'tree' | 'rock'>;
 /** Everything except trees and rocks: geometry, material, and the most one cell can hold. */
 const COVER: Record<CoverKind, { geo: () => THREE.BufferGeometry; mat: () => THREE.Material; perCell: number; tinted: boolean }> = {
   grass: { geo: buildGrass, mat: makeGrassMaterial, perCell: GRASS_PER_CELL, tinted: true },
-  leaf: { geo: buildLeaf, mat: () => new THREE.MeshLambertMaterial({ flatShading: true, side: THREE.DoubleSide }), perCell: 12, tinted: true },
   puddle: {
     geo: buildPuddle,
     mat: () =>
@@ -109,6 +106,41 @@ function patchNoise(ix: number, iz: number, scale: number, salt: number): number
   return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
 }
 
+interface RockSpot {
+  x: number;
+  z: number;
+  variant: number;
+  ry: number;
+  sx: number;
+  sy: number;
+  shade: number;
+}
+
+/** The rocks a cell owns: one large and one small at most. Deterministic, so neighbours can ask too. */
+function cellRocks(ix: number, iz: number): RockSpot[] {
+  const ox = ix * CELL;
+  const oz = iz * CELL;
+  const h = (salt: number) => hash2(ix, iz, salt);
+  const out: RockSpot[] = [];
+  if (h(50) < 0.17) {
+    const x = ox + h(51) * CELL;
+    const z = oz + h(52) * CELL;
+    const s = 0.5 + h(53) * h(57) * 2.2;
+    out.push({ x, z, variant: Math.floor(h(58) * 1000), ry: h(54) * TAU, sx: s, sy: s * (0.75 + 0.25 * h(55)), shade: 0.05 + 0.05 * h(56) });
+  }
+  // Smaller rocks fill in where the bushes used to be.
+  if (h(60) < 0.3) {
+    const x = ox + h(62) * CELL;
+    const z = oz + h(63) * CELL;
+    const s = 0.4 + h(61) * 0.9;
+    out.push({ x, z, variant: Math.floor(h(67) * 1000), ry: h(64) * TAU, sx: s, sy: s * (0.6 + 0.4 * h(65)), shade: 0.05 + 0.05 * h(66) });
+  }
+  return out.filter((r) => r.x * r.x + r.z * r.z >= START_CLEAR * START_CLEAR);
+}
+
+/** Rock models are scaled so their widest side is 1 unit; grass keeps this much clear beyond that. */
+const ROCK_GRASS_MARGIN = 0.2;
+
 function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number): Prop[] {
   const out: Prop[] = [];
   const ox = ix * CELL;
@@ -155,46 +187,22 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     });
   }
 
-  if (h(50) < 0.17) {
-    const x = ox + h(51) * CELL;
-    const z = oz + h(52) * CELL;
-    if (!nearStart(x, z)) {
-      const s = 0.5 + h(53) * h(57) * 2.2;
-      add({ kind: 'rock', variant: Math.floor(h(58) * 1000), x, z, ry: h(54) * TAU, sx: s, sy: s * (0.75 + 0.25 * h(55)), shade: 0.05 + 0.05 * h(56), r: 0.42 * s });
-    }
-  }
-
-  // Smaller rocks fill in where the bushes used to be.
-  if (h(60) < 0.3) {
-    const x = ox + h(62) * CELL;
-    const z = oz + h(63) * CELL;
-    if (!nearStart(x, z)) {
-      const s = 0.4 + h(61) * 0.9;
-      add({ kind: 'rock', variant: Math.floor(h(67) * 1000), x, z, ry: h(64) * TAU, sx: s, sy: s * (0.6 + 0.4 * h(65)), shade: 0.05 + 0.05 * h(66), r: 0.42 * s });
-    }
-  }
+  const rocks = cellRocks(ix, iz);
+  for (const r of rocks) add({ kind: 'rock', ...r, r: 0.42 * r.sx });
 
   // Dead grass: thick in some stretches of forest, nearly absent in others.
   const lush = Math.max(0, Math.min(1, (patchNoise(ix, iz, 0.18, 400) * 0.7 + patchNoise(ix, iz, 0.55, 401) * 0.3 - 0.32) * 2.2));
   const tufts = Math.min(GRASS_PER_CELL, 2 + Math.round(lush * 34 * (0.7 + 0.6 * h(70))));
+  // Nothing grows through a rock; a big one can reach over a cell edge, so check the neighbours' rocks too.
+  const nearbyRocks: RockSpot[] = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) nearbyRocks.push(...cellRocks(ix + dx, iz + dz));
   for (let i = 0; i < tufts; i++) {
     const k = 1000 + i * 6;
     const s = 0.8 + h(k) * 0.9;
-    add({ kind: 'grass', x: ox + h(k + 1) * CELL, z: oz + h(k + 2) * CELL, ry: h(k + 3) * TAU, sx: s, sy: 0.6 + h(k + 4) * 1.0, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
-  }
-
-  // Rotting leaves, in every autumn colour.
-  const leaves = 1 + Math.floor(h(100) * 3);
-  for (let i = 0; i < leaves; i++) {
-    add({
-      kind: 'leaf',
-      x: ox + h(101 + i * 4) * CELL,
-      z: oz + h(102 + i * 4) * CELL,
-      ry: h(103 + i * 4) * TAU,
-      sx: 0.7 + h(104 + i * 4) * 0.7,
-      shade: 0.6 + 0.4 * h(105 + i * 4),
-      tint: pick(LITTER_COLORS, h(106 + i * 4)),
-    });
+    const gx = ox + h(k + 1) * CELL;
+    const gz = oz + h(k + 2) * CELL;
+    if (nearbyRocks.some((r) => (gx - r.x) ** 2 + (gz - r.z) ** 2 < (0.5 * r.sx + ROCK_GRASS_MARGIN) ** 2)) continue;
+    add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s, sy: 0.6 + h(k + 4) * 1.0, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
   }
 
   // Standing water left behind by the rain.
