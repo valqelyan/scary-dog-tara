@@ -1,3 +1,5 @@
+import { crowCalls, crowFlock } from './crow';
+
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
 
 export class GameAudio {
@@ -11,6 +13,9 @@ export class GameAudio {
   private dripTimer = 1.5;
   /** Twigs snapping out in the dark, now and then. */
   twigSnaps = true;
+  private crowTimer = 10 + Math.random() * 15;
+  private flockCooldown = 0;
+  private wasIntense = false;
 
   /** Must be called from a user gesture (iOS blocks audio otherwise). */
   start(): void {
@@ -215,6 +220,25 @@ export class GameAudio {
     note(0.34, 0.5, 1900, 2700);
   }
 
+  /** A crow calling somewhere out in the trees. */
+  crow(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    crowCalls(ctx, this.master, this.white, ctx.currentTime + 0.02, {
+      volume: 0.12 + Math.random() * 0.1,
+      pan: Math.random() * 2 - 1,
+      distance: 0.45 + Math.random() * 0.45,
+    });
+  }
+
+  /** A burst of crows at once, for a sudden fright. */
+  crowFlock(crows = 3 + Math.floor(Math.random() * 4)): void {
+    const ctx = this.ctx;
+    if (!ctx || this.flockCooldown > 0) return;
+    this.flockCooldown = 12;
+    crowFlock(ctx, this.master, this.white, ctx.currentTime + 0.05, crows);
+  }
+
   setAmbient(level: number): void {
     if (!this.ctx) return;
     this.ambient.gain.setTargetAtTime(level, this.ctx.currentTime, 0.5);
@@ -365,6 +389,16 @@ export class GameAudio {
       this.drip();
       this.dripTimer = 0.4 + Math.random() * 2.4;
     }
+    this.flockCooldown -= dt;
+    // Crows call now and then; more often when things are tense, and a flock bursts up when it first gets bad.
+    this.crowTimer -= dt;
+    if (this.crowTimer <= 0) {
+      this.crow();
+      this.crowTimer = threat > 0.3 ? 5 + Math.random() * 8 : 14 + Math.random() * 26;
+    }
+    const intense = threat > 0.45;
+    if (intense && !this.wasIntense) this.crowFlock();
+    this.wasIntense = intense;
     this.snapTimer -= dt;
     if (this.snapTimer <= 0) {
       if (this.twigSnaps) this.snap();

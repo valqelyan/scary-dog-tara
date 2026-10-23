@@ -135,7 +135,10 @@ audio.twigSnaps = HORROR;
 const game = new GameState();
 const battery = new Battery();
 const batteryHud = new BatteryHud(batteryEl);
-battery.onDead = () => audio.snap(1, 0);
+battery.onDead = () => {
+  audio.snap(1, 0);
+  audio.crowFlock();
+};
 
 player.yaw = 0;
 dog.reset(player);
@@ -173,6 +176,7 @@ let lurkerHeading = 0;
 dog.onAlertStart = (heading) => {
   audio.growl(5.5, Math.sin(heading - player.yaw) * -0.6);
   battery.flicker(0.7);
+  if (Math.random() < 0.5) audio.crowFlock();
   lurkerHeading = heading;
   lurkerDelay = 1.6;
 };
