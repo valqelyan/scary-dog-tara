@@ -73,6 +73,79 @@ body {
   transform-origin: left center;
 }
 
+#battery {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(18px + env(safe-area-inset-right));
+  width: 30px;
+  height: 13px;
+  padding: 1.5px;
+  border: 1.5px solid rgba(220, 225, 220, 0.55);
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0.6;
+  transition: opacity 0.4s;
+}
+
+#battery::after {
+  content: '';
+  position: absolute;
+  top: 2.5px;
+  right: -5px;
+  width: 2.5px;
+  height: 5px;
+  border-radius: 0 1px 1px 0;
+  background: rgba(220, 225, 220, 0.55);
+}
+
+/* Four segments; the fill is clipped from the right as the charge falls. */
+#battery i {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(220, 225, 220, 0.85) 0,
+    rgba(220, 225, 220, 0.85) calc(25% - 1.5px),
+    transparent calc(25% - 1.5px),
+    transparent 25%
+  );
+}
+
+#battery.low {
+  opacity: 1;
+  border-color: var(--accent);
+  animation: battery-blink 1s steps(2, jump-none) infinite;
+}
+
+#battery.low::after {
+  background: var(--accent);
+}
+
+#battery.low i {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0,
+    var(--accent) calc(25% - 1.5px),
+    transparent calc(25% - 1.5px),
+    transparent 25%
+  );
+}
+
+#battery.dead {
+  opacity: 0.9;
+  border-color: var(--accent);
+}
+
+#battery.dead::after {
+  background: var(--accent);
+}
+
+@keyframes battery-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 #overlay {
   position: fixed;
   inset: 0;

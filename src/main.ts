@@ -11,15 +11,15 @@ import { GameAudio } from './audio';
 import { hash2 } from './rng';
 import { buildMoon } from './moon';
 import { createStats } from './stats';
+import { GameState, NIGHT_LENGTH } from './gamestate';
+import { Battery } from './battery';
+import { BatteryHud } from './batteryhud';
 
 const FOG_COLOR = 0x06090c;
 const FLASH_BASE = 260;
 const FOG_DENSITY = 0.052;
 const DAWN_COLOR = new THREE.Color(0x5b6f80);
 const NIGHT_COLOR = new THREE.Color(FOG_COLOR);
-/** Seconds you have to survive. */
-const NIGHT_LENGTH = 360;
-const DAWN_FADE = 30;
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLElement;
@@ -29,6 +29,7 @@ const vignetteEl = document.getElementById('vignette') as HTMLElement;
 const flashEl = document.getElementById('flash') as HTMLElement;
 const staminaEl = document.getElementById('stamina') as HTMLElement;
 const staminaBar = staminaEl.firstElementChild as HTMLElement;
+const batteryEl = document.getElementById('battery') as HTMLElement;
 const startBtn = document.getElementById('start') as HTMLButtonElement;
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 document.body.classList.toggle('touch', isTouch);
@@ -118,6 +119,10 @@ scene.add(lurker.group);
 const stalker = new Stalker();
 scene.add(stalker.group);
 const audio = new GameAudio();
+const game = new GameState();
+const battery = new Battery();
+const batteryHud = new BatteryHud(batteryEl);
+battery.onDead = () => audio.snap(1, 0);
 
 player.yaw = 0;
 dog.reset(player);
@@ -135,20 +140,18 @@ dog.onStep = () => {
   audio.step(0.12, 1.3 + Math.random() * 0.3, pan);
 };
 stalker.onBlink = () => {
-  flickerT = 0.5;
+  battery.flicker(0.5);
   audio.snap(1, 0);
 };
 stalker.onStep = (dist, pan) => audio.snap(THREE.MathUtils.clamp(1.1 - dist / 22, 0.2, 1), pan);
 
-let flickerT = 0;
-let nextFlicker = 40 + Math.random() * 30;
 let lurkerDelay = -1;
 let lurkerHeading = 0;
 
 // False alarms: the dog stares at nothing and a pair of eyes shows up. Only the stalker can hurt you.
 dog.onAlertStart = (heading) => {
   audio.growl(5.5, Math.sin(heading - player.yaw) * -0.6);
-  flickerT = 0.7;
+  battery.flicker(0.7);
   lurkerHeading = heading;
   lurkerDelay = 1.6;
 };
@@ -172,11 +175,6 @@ window.addEventListener('resize', resize);
 resize();
 
 // --- run state ---
-type Phase = 'play' | 'caught' | 'won';
-let phase: Phase = 'play';
-let running = false;
-let elapsed = 0;
-let caughtT = 0;
 let growlT = 0;
 let lastTime = performance.now();
 
@@ -188,16 +186,16 @@ function showOverlay(title: string, sub: string, button: string): void {
 }
 
 function endRun(): void {
-  running = false;
+  game.running = false;
   player.releaseInput();
   if (document.pointerLockElement) document.exitPointerLock();
 }
 
 /** Fresh night. The forest is endless so we stay where we are. */
 function resetRun(): void {
-  phase = 'play';
-  elapsed = 0;
-  caughtT = 0;
+  game.reset();
+  battery.reset();
+  batteryHud.reset(battery);
   growlT = 0;
   player.frozen = false;
   player.stamina = 1;
@@ -213,17 +211,17 @@ function resetRun(): void {
 }
 
 function begin(): void {
-  if (phase !== 'play') resetRun();
+  if (game.phase !== 'play') resetRun();
   audio.start();
   audio.resume();
   overlay.classList.add('hidden');
-  running = true;
+  game.running = true;
   lastTime = performance.now();
   if (!isTouch) void canvas.requestPointerLock?.();
 }
 
 function pause(): void {
-  if (!running || phase !== 'play') return;
+  if (!game.running || game.phase !== 'play') return;
   endRun();
   audio.pause();
   showOverlay('PAUSED', 'It is still out there.', 'Resume');
@@ -238,8 +236,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function caught(): void {
-  phase = 'caught';
-  caughtT = 0;
+  game.caught();
   player.frozen = true;
   stalker.placeInFront(player);
   dog.threatHeading = null;
@@ -269,9 +266,9 @@ function frame(): void {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
 
-  if (running) {
-    if (phase === 'play') updatePlay(dt);
-    else if (phase === 'caught') updateCaught(dt);
+  if (game.running) {
+    if (game.phase === 'play') updatePlay(dt);
+    else if (game.phase === 'caught') updateCaught(dt);
     sky.position.copy(camera.position);
   }
 
@@ -280,9 +277,8 @@ function frame(): void {
 }
 
 function updatePlay(dt: number): void {
-  elapsed += dt;
-  const progress = Math.min(1, elapsed / NIGHT_LENGTH);
-  const dawn = THREE.MathUtils.clamp((elapsed - (NIGHT_LENGTH - DAWN_FADE)) / DAWN_FADE, 0, 1);
+  game.tick(dt);
+  const { progress, dawn } = game;
 
   player.update(dt, forest);
   forest.update(player.pos.x, player.pos.z);
@@ -325,19 +321,9 @@ function updatePlay(dt: number): void {
   audio.tick(dt, threat);
   applyAtmosphere(threat, dawn);
 
-  // Flashlight: faint wobble, a scheduled stutter, and panicky flicker as the stalker closes in.
-  nextFlicker -= dt;
-  if (nextFlicker <= 0) {
-    flickerT = 0.5;
-    nextFlicker = 45 + Math.random() * 40;
-  }
-  if (flickerT <= 0 && Math.random() < threat * threat * 0.05) flickerT = 0.12 + Math.random() * 0.25;
-  let k = 0.96 + 0.04 * Math.sin(elapsed * 23) * Math.sin(elapsed * 7.3);
-  if (flickerT > 0) {
-    flickerT -= dt;
-    k *= Math.random() < 0.5 ? 1 : 0.12;
-  }
-  flashlight.intensity = FLASH_BASE * k;
+  // Flashlight: the battery decides how bright it is and how steady.
+  flashlight.intensity = FLASH_BASE * battery.update(dt, threat);
+  batteryHud.update(battery);
 
   // Your own nerves: the view trembles as it gets close.
   if (threat > 0.3) {
@@ -349,8 +335,8 @@ function updatePlay(dt: number): void {
   staminaBar.style.transform = `scaleX(${player.stamina.toFixed(3)})`;
   staminaEl.style.opacity = player.stamina < 0.98 ? '1' : '0';
 
-  if (elapsed >= NIGHT_LENGTH) {
-    phase = 'won';
+  if (game.survived) {
+    game.win();
     stalker.retreat(1e9);
     dog.threatHeading = null;
     endRun();
@@ -364,15 +350,15 @@ function updatePlay(dt: number): void {
 }
 
 function updateCaught(dt: number): void {
-  caughtT += dt;
-  stalker.shake(0.05 + caughtT * 0.04);
+  game.caughtT += dt;
+  stalker.shake(0.05 + game.caughtT * 0.04);
   // Snap your view up into its face and hold it there.
   player.pitch += (0.42 - player.pitch) * Math.min(1, dt * 14);
   player.applyToCamera(camera);
   camera.rotation.z += (Math.random() - 0.5) * 0.08;
   flashlight.intensity = FLASH_BASE * (Math.random() < 0.5 ? 0.3 : 0.03);
 
-  if (caughtT < 0.1) {
+  if (game.caughtT < 0.1) {
     flashEl.style.background = '#fff';
     flashEl.style.opacity = '1';
   } else {
@@ -381,7 +367,7 @@ function updateCaught(dt: number): void {
   }
   vignetteEl.style.setProperty('--t', '1');
 
-  if (caughtT > 1.7) {
+  if (game.caughtT > 1.7) {
     flashEl.style.background = '#000';
     flashEl.style.opacity = '1';
     endRun();
@@ -401,10 +387,12 @@ if (import.meta.env.DEV) {
       dog,
       lurker,
       stalker,
+      game,
+      battery,
       camera,
       renderer,
       skipTo: (t: number) => {
-        elapsed = t;
+        game.elapsed = t;
       },
     },
   });
