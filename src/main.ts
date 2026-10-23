@@ -10,6 +10,7 @@ import { Stalker } from './stalker';
 import { GameAudio } from './audio';
 import { hash2 } from './rng';
 import { buildMoon } from './moon';
+import { createStats } from './stats';
 
 const FOG_COLOR = 0x06090c;
 const FLASH_BASE = 260;
@@ -260,6 +261,8 @@ function applyAtmosphere(threat: number, dawn: number): void {
 }
 
 // --- main loop ---
+const stats = createStats(renderer, scene);
+
 function frame(): void {
   requestAnimationFrame(frame);
   const now = performance.now();
@@ -273,6 +276,7 @@ function frame(): void {
   }
 
   renderer.render(scene, camera);
+  stats.update();
 }
 
 function updatePlay(dt: number): void {
