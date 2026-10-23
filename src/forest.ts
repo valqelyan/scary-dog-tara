@@ -15,8 +15,10 @@ import {
   buildPuddle,
   grassTime,
   makeBarkMaterial,
+  makeFlowerMaterial,
   makeGrassMaterial,
   makeGroundMaterial,
+  makeMushroomMaterial,
 } from './groundcover';
 
 type Kind = 'tree' | 'rock' | 'grass' | 'leaf' | 'puddle' | 'mushroom' | 'flower' | 'log';
@@ -67,19 +69,11 @@ const COVER: Record<CoverKind, { geo: () => THREE.BufferGeometry; mat: () => THR
     perCell: 1,
     tinted: false,
   },
-  mushroom: { geo: buildMushrooms, mat: () => lambert(), perCell: 1, tinted: false },
-  flower: { geo: buildFlower, mat: () => lambert(true), perCell: 3, tinted: true },
+  mushroom: { geo: buildMushrooms, mat: makeMushroomMaterial, perCell: 1, tinted: false },
+  flower: { geo: buildFlower, mat: makeFlowerMaterial, perCell: 3, tinted: true },
   log: { geo: buildLog, mat: makeBarkMaterial, perCell: 1, tinted: false },
 };
 const COVER_KINDS = Object.keys(COVER) as CoverKind[];
-
-function lambert(doubleSide = false): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({
-    vertexColors: true,
-    flatShading: true,
-    side: doubleSide ? THREE.DoubleSide : THREE.FrontSide,
-  });
-}
 
 function cellKey(ix: number, iz: number): number {
   return (ix + 32768) * 65536 + (iz + 32768);

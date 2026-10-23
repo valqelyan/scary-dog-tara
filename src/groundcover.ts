@@ -199,7 +199,132 @@ export function buildPuddle(): THREE.BufferGeometry {
   return g;
 }
 
-/** A small cluster of pale-stemmed mushrooms. */
+/** A 128x128 canvas split into four 64x64 cells, for the small hand-painted atlases below. */
+const ATLAS = 128;
+const CELL_PX = 64;
+
+type Cell = readonly [x: number, y: number];
+
+function newAtlas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  const canvas = document.createElement('canvas');
+  canvas.width = ATLAS;
+  canvas.height = ATLAS;
+  return { canvas, ctx: canvas.getContext('2d')! };
+}
+
+function atlasTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Squeeze a geometry's 0..1 UVs into one atlas cell, a little inset so mipmaps don't bleed neighbours in. */
+function toCell(g: THREE.BufferGeometry, [cx, cy]: Cell): THREE.BufferGeometry {
+  const uv = g.attributes.uv;
+  const pad = 2;
+  const size = (CELL_PX - pad * 2) / ATLAS;
+  const u0 = (cx + pad) / ATLAS;
+  const v0 = 1 - (cy + CELL_PX - pad) / ATLAS;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * size, v0 + uv.getY(i) * size);
+  return g;
+}
+
+/** Top-down UVs for a dome or disc of the given radius: the centre of the texture sits on the axis. */
+function planarUV(g: THREE.BufferGeometry, radius: number): THREE.BufferGeometry {
+  const p = g.attributes.position;
+  const uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) uv.setXY(i, 0.5 + p.getX(i) / (2 * radius), 0.5 + p.getZ(i) / (2 * radius));
+  return g;
+}
+
+/** Same attributes on every part, so they merge: non-indexed, white vertex colour. */
+function plain(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  return paint(g.index ? g.toNonIndexed() : g, 0xffffff);
+}
+
+const MUSHROOM_STEM: Cell = [0, 0];
+const MUSHROOM_CAP: Cell = [64, 0];
+const MUSHROOM_GILLS: Cell = [0, 64];
+
+function makeMushroomTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = newAtlas();
+  const rnd = (i: number, salt: number) => hash2(i, salt, 510);
+  const c = CELL_PX / 2;
+
+  // Stem: pale and fibrous, going to dirt at the root (the bottom of the cell).
+  {
+    const [x0, y0] = MUSHROOM_STEM;
+    ctx.fillStyle = '#cdc4ae';
+    ctx.fillRect(x0, y0, CELL_PX, CELL_PX);
+    for (let i = 0; i < 36; i++) {
+      ctx.fillStyle = `rgba(${rnd(i, 1) < 0.5 ? '70,58,44' : '255,250,235'},${(0.08 + 0.2 * rnd(i, 2)).toFixed(2)})`;
+      ctx.fillRect(x0 + rnd(i, 3) * CELL_PX, y0, 1 + rnd(i, 4) * 2, CELL_PX);
+    }
+    const dirt = ctx.createLinearGradient(0, y0 + CELL_PX, 0, y0 + CELL_PX * 0.55);
+    dirt.addColorStop(0, 'rgba(48,34,22,0.85)');
+    dirt.addColorStop(1, 'rgba(48,34,22,0)');
+    ctx.fillStyle = dirt;
+    ctx.fillRect(x0, y0, CELL_PX, CELL_PX);
+  }
+
+  // Cap seen from above: dark leathery brown, paler towards the rim, with fine radial fibres and a few veil flecks.
+  {
+    const [x0, y0] = MUSHROOM_CAP;
+    const g = ctx.createRadialGradient(x0 + c, y0 + c, 2, x0 + c, y0 + c, c);
+    g.addColorStop(0, '#3e2416');
+    g.addColorStop(0.7, '#6a4630');
+    g.addColorStop(1, '#8a6a4c');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0, y0, CELL_PX, CELL_PX);
+    for (let i = 0; i < 70; i++) {
+      const a = rnd(i, 5) * TAU;
+      const r0 = 3 + rnd(i, 6) * c * 0.5;
+      ctx.strokeStyle = `rgba(${rnd(i, 7) < 0.5 ? '30,16,8' : '190,160,120'},${(0.1 + 0.2 * rnd(i, 8)).toFixed(2)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x0 + c + Math.cos(a) * r0, y0 + c + Math.sin(a) * r0);
+      ctx.lineTo(x0 + c + Math.cos(a) * c, y0 + c + Math.sin(a) * c);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = rnd(i, 9) * TAU;
+      const r = Math.sqrt(rnd(i, 10)) * c * 0.8;
+      ctx.fillStyle = `rgba(214,200,172,${(0.45 + 0.4 * rnd(i, 11)).toFixed(2)})`;
+      ctx.beginPath();
+      ctx.arc(x0 + c + Math.cos(a) * r, y0 + c + Math.sin(a) * r, 1 + rnd(i, 12) * 2, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  // Underside: pale radial gills round a darker stem scar.
+  {
+    const [x0, y0] = MUSHROOM_GILLS;
+    ctx.fillStyle = '#a89878';
+    ctx.fillRect(x0, y0, CELL_PX, CELL_PX);
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * TAU;
+      ctx.strokeStyle = i % 2 ? 'rgba(70,52,36,0.7)' : 'rgba(220,206,176,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x0 + c + Math.cos(a) * 5, y0 + c + Math.sin(a) * 5);
+      ctx.lineTo(x0 + c + Math.cos(a) * c, y0 + c + Math.sin(a) * c);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#4a3a2a';
+    ctx.beginPath();
+    ctx.arc(x0 + c, y0 + c, 5, 0, TAU);
+    ctx.fill();
+  }
+
+  return atlasTexture(canvas);
+}
+
+export function makeMushroomMaterial(): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({ map: makeMushroomTexture(), vertexColors: true, side: THREE.DoubleSide });
+}
+
+/** A small cluster of mushrooms: textured stems, domed caps, and gills underneath. */
 export function buildMushrooms(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const spots: [number, number, number][] = [
@@ -208,28 +333,136 @@ export function buildMushrooms(): THREE.BufferGeometry {
     [-0.06, 0.09, 0.85],
   ];
   for (const [x, z, s] of spots) {
-    const stem = new THREE.CylinderGeometry(0.018 * s, 0.026 * s, 0.09 * s, 5);
-    stem.translate(x, 0.045 * s, z);
-    parts.push(paint(stem, 0xb7ae98));
-    const cap = new THREE.ConeGeometry(0.07 * s, 0.05 * s, 7);
-    cap.translate(x, 0.095 * s, z);
-    parts.push(paint(cap, 0x6a4430));
+    const stemH = 0.09 * s;
+    const stem = new THREE.CylinderGeometry(0.018 * s, 0.026 * s, stemH, 7, 1);
+    stem.translate(x, stemH / 2, z);
+    parts.push(plain(toCell(stem, MUSHROOM_STEM)));
+
+    const R = 0.07 * s;
+    const cap = new THREE.SphereGeometry(R, 9, 3, 0, TAU, 0, Math.PI / 2);
+    cap.scale(1, 0.6, 1);
+    planarUV(cap, R);
+    toCell(cap, MUSHROOM_CAP);
+    cap.translate(x, stemH - 0.004, z);
+    parts.push(plain(cap));
+
+    const gills = new THREE.CircleGeometry(R * 0.97, 9);
+    gills.rotateX(Math.PI / 2);
+    planarUV(gills, R * 0.97);
+    toCell(gills, MUSHROOM_GILLS);
+    gills.translate(x, stemH - 0.004, z);
+    parts.push(plain(gills));
   }
   return mergeGeometries(parts, false)!;
 }
 
-/** A wilted flower: thin dark stem, drooping pale head that takes the instance tint. */
+const FLOWER_PETALS: Cell = [0, 0];
+const FLOWER_LEAF: Cell = [64, 0];
+const FLOWER_STEM: Cell = [0, 64];
+
+function makeFlowerTexture(): THREE.CanvasTexture {
+  const { canvas, ctx } = newAtlas();
+  const rnd = (i: number, salt: number) => hash2(i, salt, 520);
+  const c = CELL_PX / 2;
+
+  // Petals: near-white so the per-flower tint colours them. Transparent between petals (alpha-tested).
+  {
+    const [x0, y0] = FLOWER_PETALS;
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + (rnd(i, 1) - 0.5) * 0.15;
+      const len = 24 + rnd(i, 2) * 6;
+      ctx.save();
+      ctx.translate(x0 + c, y0 + c);
+      ctx.rotate(a);
+      ctx.fillStyle = `rgb(${215 + Math.floor(rnd(i, 3) * 40)},${215 + Math.floor(rnd(i, 3) * 40)},${215 + Math.floor(rnd(i, 3) * 40)})`;
+      ctx.beginPath();
+      ctx.ellipse(len / 2 + 5, 0, len / 2, 4.2, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(120,120,120,0.55)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(6, 0);
+      ctx.lineTo(len + 3, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#4a3c1c';
+    ctx.beginPath();
+    ctx.arc(x0 + c, y0 + c, 6, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.arc(x0 + c + 1.5, y0 + c + 1.5, 3.5, 0, TAU);
+    ctx.fill();
+  }
+
+  // Leaf: lanceolate, pointing up the cell, with a pale midrib.
+  {
+    const [x0, y0] = FLOWER_LEAF;
+    ctx.fillStyle = '#2a3a1e';
+    ctx.beginPath();
+    ctx.moveTo(x0 + c, y0 + CELL_PX - 1);
+    ctx.quadraticCurveTo(x0 + c + 20, y0 + CELL_PX * 0.55, x0 + c, y0 + 1);
+    ctx.quadraticCurveTo(x0 + c - 20, y0 + CELL_PX * 0.55, x0 + c, y0 + CELL_PX - 1);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(140,160,100,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x0 + c, y0 + CELL_PX - 2);
+    ctx.lineTo(x0 + c, y0 + 4);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(10,20,6,0.4)';
+    for (let i = 0; i < 6; i++) {
+      const y = y0 + 12 + i * 8;
+      ctx.beginPath();
+      ctx.moveTo(x0 + c, y + 4);
+      ctx.lineTo(x0 + c - 9 + i, y);
+      ctx.moveTo(x0 + c, y + 4);
+      ctx.lineTo(x0 + c + 9 - i, y);
+      ctx.stroke();
+    }
+  }
+
+  // Stem: dark green with fibres, fully opaque.
+  {
+    const [x0, y0] = FLOWER_STEM;
+    ctx.fillStyle = '#243219';
+    ctx.fillRect(x0, y0, CELL_PX, CELL_PX);
+    for (let i = 0; i < 24; i++) {
+      ctx.fillStyle = `rgba(${rnd(i, 4) < 0.5 ? '10,18,6' : '110,130,80'},${(0.1 + 0.2 * rnd(i, 5)).toFixed(2)})`;
+      ctx.fillRect(x0 + rnd(i, 6) * CELL_PX, y0, 1 + rnd(i, 7) * 2, CELL_PX);
+    }
+  }
+
+  return atlasTexture(canvas);
+}
+
+export function makeFlowerMaterial(): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({ map: makeFlowerTexture(), vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide });
+}
+
+/** A wilted flower: textured stem, two basal leaves, and a drooping petal head that takes the instance tint. */
 export function buildFlower(): THREE.BufferGeometry {
-  const stem = new THREE.CylinderGeometry(0.006, 0.009, 0.3, 3);
+  const parts: THREE.BufferGeometry[] = [];
+  const stem = new THREE.CylinderGeometry(0.006, 0.009, 0.3, 4, 1, true);
   stem.translate(0, 0.15, 0);
-  paint(stem, 0x1b2312);
-  const head = new THREE.OctahedronGeometry(0.038, 0);
-  head.scale(1, 0.55, 1);
-  head.rotateZ(0.5);
+  parts.push(plain(toCell(stem, FLOWER_STEM)));
+
+  for (const [lean, turn] of [[0.8, 0.4], [-0.7, 2.4]] as const) {
+    const leaf = new THREE.PlaneGeometry(0.05, 0.13);
+    leaf.translate(0, 0.065, 0);
+    leaf.rotateZ(lean);
+    leaf.rotateY(turn);
+    leaf.translate(0, 0.02, 0);
+    parts.push(plain(toCell(leaf, FLOWER_LEAF)));
+  }
+
+  const head = new THREE.PlaneGeometry(0.11, 0.11);
+  head.rotateX(-Math.PI / 2 + 0.5);
   head.translate(0.05, 0.28, 0);
-  paint(head, 0xffffff);
-  // Octahedra are non-indexed, cylinders are indexed: merging needs them to match.
-  return mergeGeometries([stem.toNonIndexed(), head], false)!;
+  parts.push(plain(toCell(head, FLOWER_PETALS)));
+  return mergeGeometries(parts, false)!;
 }
 
 /** A rotting fallen log. UVs run around the trunk (u) and along it (v), ready for a bark texture. */
