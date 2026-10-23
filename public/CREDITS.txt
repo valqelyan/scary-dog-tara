@@ -1,0 +1,3 @@
+Ground textures and rock models: Poly Haven (https://polyhaven.com), CC0.
+  leaves_forest_ground, brown_mud_leaves_01, rock_07, rock_09, rock_moss_set_01
+Bark textures (fallen logs): from @dgreenheck/ez-tree (https://github.com/dgreenheck/ez-tree), MIT license.

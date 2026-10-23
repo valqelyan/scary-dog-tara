@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#06090c" />
+    <title>Scary Dog</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="vignette"></div>
+    <div id="flash"></div>
+    <div id="stamina"><i></i></div>
+
+    <div id="stick-base"><div id="stick-knob"></div></div>
+
+    <div id="overlay">
+      <h1 id="title">SCARY DOG</h1>
+      <p class="sub" id="sub">Survive until dawn. Trust the dog.</p>
+      <button id="start">Tap / click to begin</button>
+      <p class="help desktop-only">
+        <b>WASD</b> move &nbsp;·&nbsp; <b>Mouse</b> look &nbsp;·&nbsp; <b>Shift</b> run (tires you out) &nbsp;·&nbsp; <b>Space</b> jump &nbsp;·&nbsp; <b>Esc</b> pause
+      </p>
+      <p class="help touch-only">
+        Left thumb: <b>move</b> &nbsp;·&nbsp; Right thumb: <b>look</b> &nbsp;·&nbsp; Tap right side: <b>jump</b><br />
+        Push the stick all the way to run. Landscape works best. Headphones recommended.
+      </p>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
