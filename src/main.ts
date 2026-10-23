@@ -16,6 +16,9 @@ import { GameState, NIGHT_LENGTH } from './gamestate';
 import { Battery } from './battery';
 import { BatteryHud } from './batteryhud';
 
+/** Off by default, so you can just explore: no stalker, eyes, false alarms, twig snaps or dawn ending. Add ?horror to the URL to turn it all on. */
+const HORROR = new URLSearchParams(location.search).has('horror');
+
 const FOG_COLOR = 0x06090c;
 const FLASH_BASE = 260;
 const FOG_DENSITY = 0.052;
@@ -110,6 +113,7 @@ const player = new Player(
   document.getElementById('stick-knob') as HTMLElement,
 );
 const dog = new Dog();
+dog.alarms = HORROR;
 {
   // ?distraction=0..1 sets how easily the dog gets sidetracked (0.5 if left out), and ?playful=0..1 how playful she is (0.7).
   const params = new URLSearchParams(location.search);
@@ -125,7 +129,9 @@ const lurker = new Lurker();
 scene.add(lurker.group);
 const stalker = new Stalker();
 scene.add(stalker.group);
+stalker.group.visible = HORROR;
 const audio = new GameAudio();
+audio.twigSnaps = HORROR;
 const game = new GameState();
 const battery = new Battery();
 const batteryHud = new BatteryHud(batteryEl);
@@ -288,18 +294,19 @@ function frame(): void {
 
 function updatePlay(dt: number): void {
   game.tick(dt);
-  const { progress, dawn } = game;
+  const { progress } = game;
+  const dawn = HORROR ? game.dawn : 0;
 
   player.update(dt, forest);
   forest.update(player.pos.x, player.pos.z);
   dog.update(dt, player, forest);
   player.applyToCamera(camera);
 
-  if (stalker.update(dt, player, camera, progress, dawn > 0)) {
+  if (HORROR && stalker.update(dt, player, camera, progress, dawn > 0)) {
     caught();
     return;
   }
-  const threat = stalker.threat;
+  const threat = HORROR ? stalker.threat : 0;
 
   if (stalker.active && threat > 0.04) {
     const sp = stalker.group.position;
@@ -342,7 +349,7 @@ function updatePlay(dt: number): void {
   staminaBar.style.transform = `scaleX(${player.stamina.toFixed(3)})`;
   staminaEl.style.opacity = player.stamina < 0.98 ? '1' : '0';
 
-  if (game.survived) {
+  if (HORROR && game.survived) {
     game.win();
     stalker.retreat(1e9);
     dog.threatHeading = null;

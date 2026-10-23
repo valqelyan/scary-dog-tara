@@ -9,6 +9,8 @@ export class GameAudio {
   private snapTimer = 22;
   private beatTimer = 0;
   private dripTimer = 1.5;
+  /** Twigs snapping out in the dark, now and then. */
+  twigSnaps = true;
 
   /** Must be called from a user gesture (iOS blocks audio otherwise). */
   start(): void {
@@ -365,7 +367,7 @@ export class GameAudio {
     }
     this.snapTimer -= dt;
     if (this.snapTimer <= 0) {
-      this.snap();
+      if (this.twigSnaps) this.snap();
       this.snapTimer = 18 + Math.random() * 35;
     }
   }
