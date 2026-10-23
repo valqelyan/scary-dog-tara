@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import { Gaze } from './gaze';
 
 export class Lurker {
   readonly group = new THREE.Group();
 
   private life = 0;
-  private watched = 0;
+  private gaze = new Gaze();
   private blinkT = 0;
   private active = false;
   private readonly toEyes = new THREE.Vector3();
@@ -26,7 +27,7 @@ export class Lurker {
     this.group.visible = true;
     this.active = true;
     this.life = 0;
-    this.watched = 0;
+    this.gaze.reset();
     this.blinkT = 2 + Math.random() * 2;
   }
 
@@ -47,9 +48,8 @@ export class Lurker {
 
     camera.getWorldDirection(this.fwd);
     this.toEyes.copy(this.group.position).sub(camera.position).normalize();
-    if (this.fwd.dot(this.toEyes) > 0.94) this.watched += dt;
-    else this.watched = Math.max(0, this.watched - dt * 0.5);
-    if (this.watched > 0.7 || this.life > 14) {
+    this.gaze.update(dt, this.fwd.dot(this.toEyes) > 0.94);
+    if (this.gaze.time > 0.7 || this.life > 14) {
       this.hide();
       return;
     }

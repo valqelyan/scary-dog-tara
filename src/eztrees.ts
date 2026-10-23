@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Tree, TreePreset } from '@dgreenheck/ez-tree';
-import { AUTUMN_LEAVES } from './groundcover';
+import { AUTUMN_LEAVES } from './cover';
 
 export interface TreeVariant {
   weight: number;

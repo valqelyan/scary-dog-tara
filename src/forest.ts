@@ -3,23 +3,18 @@ import { hash2 } from './rng';
 import { generateTreeVariants, type TreeVariant } from './eztrees';
 import type { RockVariant } from './rocks';
 import {
+  CoverType,
+  Flower,
   FLOWER_COLORS,
   GRASS_COLORS,
+  GRASS_PER_CELL,
   GROUND_TILE,
-  buildFlower,
-  buildGrass,
-  buildLog,
-  buildMushrooms,
-  buildPuddle,
-  grassTime,
-  tickPuddles,
-  makeBarkMaterial,
-  makeFlowerMaterial,
-  makeGrassMaterial,
+  Grass,
+  Log,
+  Mushroom,
+  Puddle,
   makeGroundMaterial,
-  makeMushroomMaterial,
-  makePuddleMaterial,
-} from './groundcover';
+} from './cover';
 
 type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
 
@@ -51,16 +46,15 @@ const RADIUS = 8;
 const START_CLEAR = 4;
 const TAU = Math.PI * 2;
 const GROUND_SIZE = 180;
-const GRASS_PER_CELL = 40;
 
 type CoverKind = Exclude<Kind, 'tree' | 'rock'>;
 
-const COVER: Record<CoverKind, { geo: () => THREE.BufferGeometry; mat: () => THREE.Material; perCell: number; tinted: boolean }> = {
-  grass: { geo: buildGrass, mat: makeGrassMaterial, perCell: GRASS_PER_CELL, tinted: true },
-  puddle: { geo: buildPuddle, mat: makePuddleMaterial, perCell: 1, tinted: false },
-  mushroom: { geo: buildMushrooms, mat: makeMushroomMaterial, perCell: 1, tinted: false },
-  flower: { geo: buildFlower, mat: makeFlowerMaterial, perCell: 3, tinted: true },
-  log: { geo: buildLog, mat: makeBarkMaterial, perCell: 1, tinted: false },
+const COVER: Record<CoverKind, CoverType> = {
+  grass: new Grass(),
+  puddle: new Puddle(),
+  mushroom: new Mushroom(),
+  flower: new Flower(),
+  log: new Log(),
 };
 const COVER_KINDS = Object.keys(COVER) as CoverKind[];
 
@@ -309,7 +303,7 @@ export class Forest {
     }
     for (const kind of COVER_KINDS) {
       const c = COVER[kind];
-      this.cover[kind] = { meshes: [this.makeMesh(c.geo(), c.mat(), cellCount * c.perCell)], tintMesh: c.tinted ? 0 : -1, tintScale: kind === 'grass' ? 0.5 : 0.75 };
+      this.cover[kind] = { meshes: [this.makeMesh(c.geometry(), c.material(), cellCount * c.perCell)], tintMesh: c.tinted ? 0 : -1, tintScale: kind === 'grass' ? 0.5 : 0.75 };
     }
 
     const gGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
@@ -349,8 +343,8 @@ export class Forest {
   update(px: number, pz: number): void {
     this.ground.position.set(px, 0, pz);
     for (const t of this.groundMaps) t.offset.set(px / GROUND_TILE, -pz / GROUND_TILE);
-    grassTime.value = performance.now() / 1000;
-    tickPuddles(grassTime.value);
+    const time = performance.now() / 1000;
+    for (const kind of COVER_KINDS) COVER[kind].tick(time);
 
     const cx = Math.floor(px / CELL);
     const cz = Math.floor(pz / CELL);

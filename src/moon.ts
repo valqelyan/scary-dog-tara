@@ -1,12 +1,11 @@
 import * as THREE from 'three';
+import { canvasTexture, newCanvas } from './gfx';
 import { hash2 } from './rng';
 
 const TEX = 256;
 
 function moonTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = TEX;
-  const g = c.getContext('2d')!;
+  const { canvas: c, ctx: g } = newCanvas(TEX);
   const mid = TEX / 2;
 
   g.save();
@@ -48,23 +47,19 @@ function moonTexture(): THREE.CanvasTexture {
   }
   g.restore();
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return canvasTexture(c, { srgb: true });
 }
 
 function glowTexture(): THREE.CanvasTexture {
   const size = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const g = c.getContext('2d')!;
+  const { canvas: c, ctx: g } = newCanvas(size);
   const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   grad.addColorStop(0, 'rgba(170, 190, 230, 0.55)');
   grad.addColorStop(0.25, 'rgba(120, 145, 200, 0.22)');
   grad.addColorStop(1, 'rgba(80, 105, 160, 0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(c);
+  return canvasTexture(c);
 }
 
 export function buildMoon(): THREE.Group {

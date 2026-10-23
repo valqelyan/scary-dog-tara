@@ -1,7 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { Forest } from './forest';
-import { buildRock } from './groundcover';
+import { buildRock } from './cover';
 import { loadRocks } from './rocks';
 import { Player } from './player';
 import { Dog } from './dog';
@@ -9,6 +9,7 @@ import { Lurker } from './lurker';
 import { Stalker } from './stalker';
 import { GameAudio } from './audio';
 import { hash2 } from './rng';
+import { approach } from './util';
 import { buildMoon } from './moon';
 import { createStats } from './stats';
 import { GameState, NIGHT_LENGTH } from './gamestate';
@@ -348,7 +349,7 @@ function updatePlay(dt: number): void {
 function updateCaught(dt: number): void {
   game.caughtT += dt;
   stalker.shake(0.05 + game.caughtT * 0.04);
-  player.pitch += (0.42 - player.pitch) * Math.min(1, dt * 14);
+  player.pitch = approach(player.pitch, 0.42, 14, dt);
   player.applyToCamera(camera);
   camera.rotation.z += (Math.random() - 0.5) * 0.08;
   flashlight.intensity = FLASH_BASE * (Math.random() < 0.5 ? 0.3 : 0.03);

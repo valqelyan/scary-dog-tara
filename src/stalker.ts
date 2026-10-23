@@ -1,22 +1,13 @@
 import * as THREE from 'three';
 import type { Player } from './player';
+import { box as blockBox } from './gfx';
+import { Gaze } from './gaze';
 
 const SKIN = 0xbdb8aa;
 const BODY = 0x050507;
 const VOID = 0x000000;
 
-function box(w: number, h: number, d: number, hex: number, x = 0, y = 0, z = 0): THREE.Mesh {
-  const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshLambertMaterial({
-      color: hex,
-      flatShading: true,
-      emissive: hex === SKIN ? new THREE.Color(hex).multiplyScalar(0.3) : new THREE.Color(0x000000),
-    }),
-  );
-  m.position.set(x, y, z);
-  return m;
-}
+const box = (w: number, h: number, d: number, hex: number, x = 0, y = 0, z = 0) => blockBox(w, h, d, hex, x, y, z, hex === SKIN ? 0.3 : 0);
 
 const SPAWN_DIST = 24;
 const CATCH_DIST = 1.4;
@@ -26,7 +17,6 @@ export class Stalker {
   readonly group = new THREE.Group();
   active = false;
   threat = 0;
-  watched = 0;
   onStep?: (dist: number, pan: number) => void;
   onBlink?: () => void;
 
@@ -36,6 +26,7 @@ export class Stalker {
   private head = new THREE.Group();
   private poseT = 0;
   private blinkT = 0;
+  private gaze = new Gaze();
   private stepT = 1;
   private readonly frustum = new THREE.Frustum();
   private readonly projView = new THREE.Matrix4();
@@ -75,7 +66,7 @@ export class Stalker {
     this.group.scale.setScalar(1);
     this.blinkT = 0;
     this.threat = 0;
-    this.watched = 0;
+    this.gaze.reset();
     this.spawnTimer = FIRST_SPAWN;
   }
 
@@ -84,7 +75,7 @@ export class Stalker {
     this.active = false;
     this.group.visible = false;
     this.threat = 0;
-    this.watched = 0;
+    this.gaze.reset();
     this.spawnTimer = cooldown;
   }
 
@@ -99,7 +90,7 @@ export class Stalker {
     this.active = true;
     this.group.visible = true;
     this.blinkT = 0;
-    this.watched = 0;
+    this.gaze.reset();
     this.stepT = 1;
     this.restPose(0);
   }
@@ -156,8 +147,7 @@ export class Stalker {
     }
 
     const seen = this.inView(camera);
-    if (seen) this.watched += dt;
-    else this.watched = Math.max(0, this.watched - dt * 0.5);
+    this.gaze.update(dt, seen);
 
     if (this.blinkT > 0) {
       this.blinkT -= dt;
@@ -165,13 +155,13 @@ export class Stalker {
       return false;
     }
 
-    if (this.watched > 4 && dist > 7) {
+    if (this.gaze.time > 4 && dist > 7) {
       const to = Math.max(6, dist * 0.6);
       pos.x = player.pos.x - (dx / dist) * to;
       pos.z = player.pos.z - (dz / dist) * to;
       this.group.visible = false;
       this.blinkT = 0.45;
-      this.watched = 0;
+      this.gaze.reset();
       this.onBlink?.();
       return false;
     }
