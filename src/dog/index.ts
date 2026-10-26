@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { Forest } from '../forest';
 import type { Player } from '../player';
 import { DogBrain } from './brain';
+import type { DogBody } from './body';
 import { DogModel } from './model';
+import { DogSkin } from './skin';
 
 /** The dog: a brain that decides what to do, and a model that shows it. This is what the rest of the game talks to. */
 export class Dog {
@@ -14,13 +16,27 @@ export class Dog {
   onStep?: () => void;
 
   private brain = new DogBrain(this.pos);
-  private model = new DogModel();
+  private model: DogBody = new DogModel();
 
   constructor() {
     this.group.add(this.model.group);
     this.brain.onAlertStart = (heading) => this.onAlertStart?.(heading);
     this.brain.onAlertEnd = () => this.onAlertEnd?.();
     this.model.onStep = () => this.onStep?.();
+    // The blocky dog stands in while the pointer loads, and stays if it cannot (or with ?dog=box).
+    if (new URLSearchParams(location.search).get('dog') !== 'box') void this.loadPointer();
+  }
+
+  private async loadPointer(): Promise<void> {
+    try {
+      const skin = await DogSkin.load(import.meta.env.BASE_URL + 'dog/Dog.fbx');
+      this.group.remove(this.model.group);
+      skin.onStep = () => this.onStep?.();
+      this.model = skin;
+      this.group.add(skin.group);
+    } catch (err) {
+      console.warn('[dog] could not load the pointer model, keeping the blocky dog', err);
+    }
   }
 
   get followAngle(): number {

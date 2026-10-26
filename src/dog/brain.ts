@@ -60,7 +60,7 @@ export class DogBrain {
   onAlertStart?: (heading: number) => void;
   onAlertEnd?: () => void;
 
-  readonly pose: DogPose = { speed: 0, alert: false, sniffGround: false, sniffTree: false, drink: false, perk: false, happy: false, bow: false, listen: false, headTurn: 0, eyeGlow: 0, viewDist: 0 };
+  readonly pose: DogPose = { speed: 0, alert: false, sniffGround: false, sniffTree: false, drink: false, perk: false, happy: false, bow: false, listen: false, headTurn: 0, eyeGlow: 0, viewDist: 0, turn: 0, lookAhead: 0 };
   readonly steer: Steer = { goalX: 0, goalZ: 0, maxSpeed: 0, ease: true, stay: false };
   readonly wander = new Wander();
   readonly pull = new Distraction();
@@ -104,6 +104,7 @@ export class DogBrain {
   private elapsed = 0;
   private nextAlert = range(DOG.firstAlert);
   private playCooldown = 0;
+  private lastHeading = 0;
 
   constructor(readonly pos: THREE.Vector3) {}
 
@@ -402,5 +403,13 @@ export class DogBrain {
     const facing = Math.cos(angleDiff(bearing, this.heading));
     p.eyeGlow = Math.max(0, Math.min(1, (facing - 0.2) / 0.6)) * Math.max(0, Math.min(1, (f.playerDist - 4) / 5));
     p.viewDist = f.playerDist;
+
+    // How fast she is turning, smoothed, and where she is heading versus where she faces, so the head can lead.
+    const dt = Math.max(f.dt, 1e-3);
+    p.turn = approach(p.turn, angleDiff(this.heading, this.lastHeading) / dt, 8, dt);
+    this.lastHeading = this.heading;
+    const s = this.steer;
+    const ahead = angleDiff(Math.atan2(s.goalX - this.pos.x, s.goalZ - this.pos.z), this.heading);
+    p.lookAhead = !s.stay && this.speed > 0.4 ? Math.max(-1, Math.min(1, ahead)) : 0;
   }
 }

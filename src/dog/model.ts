@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { blockMaterial, box, canvasTexture, newCanvas } from '../gfx';
 import { approach } from '../util';
+import type { DogBody } from './body';
 
 const COAT = 0x0e0a07;
 const COAT_LIGHT = 0x1a130d;
@@ -31,10 +32,14 @@ export interface DogPose {
   eyeGlow: number;
   /** Metres to the player, so the eyeshine can grow with distance and stay visible. */
   viewDist: number;
+  /** How fast she is turning, in radians per second: positive toward her left. The body leans and the head leads. */
+  turn: number;
+  /** Where she is heading, relative to where she faces, in radians: the head looks that way before the body follows. */
+  lookAhead: number;
 }
 
 /** A soft amber glow dot, drawn once and shared by both eyes. */
-const eyeShine = (() => {
+export const eyeShine = (() => {
   const { canvas, ctx } = newCanvas(32);
   const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
   g.addColorStop(0, 'rgba(255,210,120,1)');
@@ -46,7 +51,7 @@ const eyeShine = (() => {
 })();
 
 /** The dog's blocky body and how it moves: gait, head, ears, tail. It knows nothing about where to go. */
-export class DogModel {
+export class DogModel implements DogBody {
   readonly group = new THREE.Group();
   onStep?: () => void;
 

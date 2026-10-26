@@ -1,3 +1,4 @@
 Rock models: Poly Haven (https://polyhaven.com), CC0.
   rock_07, rock_09, rock_moss_set_01
 Bark textures (fallen logs): from @dgreenheck/ez-tree (https://github.com/dgreenheck/ez-tree), MIT license.
+Dog model: "Animal Pack Vol.2" by Quaternius (https://opengameart.org/content/animated-animales-low-poly), CC0.
