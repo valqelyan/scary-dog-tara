@@ -213,7 +213,7 @@ function endRun(): void {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 
-/** Fresh night. The forest is endless so we stay where we are. */
+/** Fresh night. We stay where we are; the map is a walled disc around the start. */
 function resetRun(): void {
   game.reset();
   battery.reset();

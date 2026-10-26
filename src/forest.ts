@@ -46,6 +46,11 @@ const RADIUS = 8;
 const START_CLEAR = 4;
 const TAU = Math.PI * 2;
 const GROUND_SIZE = 180;
+/** The playable map is a disc this big around the start; a dark wall stands on its rim. */
+export const WORLD_RADIUS = 120;
+const WALL_HEIGHT = 40;
+
+const beyondWall = (x: number, z: number) => x * x + z * z > WORLD_RADIUS * WORLD_RADIUS;
 
 type CoverKind = Exclude<Kind, 'tree' | 'rock'>;
 
@@ -312,6 +317,17 @@ export class Forest {
     this.groundMaps = ground.maps;
     this.ground = new THREE.Mesh(gGeo, ground.material);
     this.group.add(this.ground);
+    this.group.add(this.makeWall());
+  }
+
+  private makeWall(): THREE.Mesh {
+    const geo = new THREE.CylinderGeometry(WORLD_RADIUS, WORLD_RADIUS, WALL_HEIGHT, 128, 1, true);
+    geo.translate(0, WALL_HEIGHT / 2 - 1, 0);
+    // Seen from inside only; it is lit by the flashlight and fades into the fog like everything else.
+    const mat = new THREE.MeshStandardMaterial({ color: 0x0b0e12, roughness: 1, metalness: 0, side: THREE.BackSide });
+    const wall = new THREE.Mesh(geo, mat);
+    wall.frustumCulled = false;
+    return wall;
   }
 
   private makeMesh(geo: THREE.BufferGeometry, mat: THREE.Material, cap: number): THREE.InstancedMesh {
@@ -385,6 +401,7 @@ export class Forest {
         if (dx * dx + dz * dz > RADIUS * RADIUS) continue;
 
         for (const p of props) {
+          if (beyondWall(p.x, p.z)) continue;
           if (p.kind === 'tree') place(this.trees[p.variant], treeCounts[p.variant]++, p);
           else if (p.kind === 'rock') {
             if (this.rocks.length === 0) continue;
@@ -418,6 +435,7 @@ export class Forest {
       for (let dz = -reach; dz <= reach; dz++) {
         for (const p of this.getCell(ix + dx, iz + dz)) {
           if (p.kind !== 'tree' && p.kind !== 'puddle') continue;
+          if (beyondWall(p.x, p.z)) continue;
           if ((p.x - x) ** 2 + (p.z - z) ** 2 > radius * radius) continue;
           out.push({ kind: p.kind, x: p.x, z: p.z, r: p.kind === 'tree' ? p.r : 0.75 * Math.sqrt(p.sx * p.sz) });
         }
@@ -432,7 +450,7 @@ export class Forest {
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
         for (const pr of this.getCell(ix + dx, iz + dz)) {
-          if (pr.r <= 0) continue;
+          if (pr.r <= 0 || beyondWall(pr.x, pr.z)) continue;
           const ddx = p.x - pr.x;
           const ddz = p.z - pr.z;
           const min = pr.r + radius;
@@ -444,6 +462,13 @@ export class Forest {
           }
         }
       }
+    }
+    // Last, so a trunk by the rim cannot shove anyone through the wall.
+    const limit = WORLD_RADIUS - radius;
+    const dist = Math.hypot(p.x, p.z);
+    if (dist > limit) {
+      p.x *= limit / dist;
+      p.z *= limit / dist;
     }
   }
 }
