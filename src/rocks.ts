@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { simplify, simplifierReady } from './simplify';
 
 export interface RockVariant {
   geo: THREE.BufferGeometry;
@@ -14,6 +15,12 @@ const MODELS: { id: string; gain: number }[] = [
 ];
 
 /**
+ * Triangles each rock is reduced to. The scans have 5k to 16k, and the normal map already holds the fine detail;
+ * dozens are on screen at once, so this is the biggest single saving on the frame.
+ */
+const ROCK_TRIANGLES = 1500;
+
+/**
  * Loads the scanned rocks and bakes each mesh into a standalone geometry: centred on x/z, sitting
  * just under y = 0, and scaled so its widest horizontal side is 1 unit. That lets the forest scatter
  * them with the same instancing code as everything else.
@@ -21,7 +28,7 @@ const MODELS: { id: string; gain: number }[] = [
 export async function loadRocks(): Promise<RockVariant[]> {
   const loader = new GLTFLoader();
   const base = import.meta.env.BASE_URL;
-  const loaded = await Promise.all(MODELS.map(({ id }) => loader.loadAsync(`${base}rocks/${id}/${id}.gltf`)));
+  const [loaded] = await Promise.all([Promise.all(MODELS.map(({ id }) => loader.loadAsync(`${base}rocks/${id}/${id}.gltf`))), simplifierReady]);
 
   const out: RockVariant[] = [];
   const size = new THREE.Vector3();
@@ -40,6 +47,7 @@ export async function loadRocks(): Promise<RockVariant[]> {
       geo.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
       geo.scale(k, k, k);
       geo.translate(0, -0.04, 0);
+      simplify(geo, ROCK_TRIANGLES);
       geo.computeBoundingSphere();
 
       const mat = mesh.material as THREE.MeshStandardMaterial;
