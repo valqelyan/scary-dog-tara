@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Tree, TreePreset } from '@dgreenheck/ez-tree';
 import { AUTUMN_LEAVES } from './cover';
+import { DAY } from './mode';
 
 export interface TreeVariant {
   weight: number;
@@ -24,7 +25,7 @@ interface Spec {
   autumn?: boolean;
 }
 
-const SPECS: Spec[] = [
+const NIGHT_SPECS: Spec[] = [
   { preset: 'Pine Medium', seed: 101, height: 10, weight: 16, leaves: 1, barkTint: 0x3a312c, leafTint: 0x2c4130 },
   { preset: 'Pine Large', seed: 202, height: 13, weight: 10, leaves: 1, barkTint: 0x342c27, leafTint: 0x263a2a },
   { preset: 'Pine Medium', seed: 303, height: 8.5, weight: 8, leaves: 0.7, barkTint: 0x3a312c, leafTint: 0x2f4130 },
@@ -38,6 +39,20 @@ const SPECS: Spec[] = [
   { preset: 'Aspen Small', seed: 1102, height: 4.2, weight: 6, leaves: 0.65, barkTint: 0x55524b, leafTint: 0xffffff, autumn: true },
   { preset: 'Ash Small', seed: 1203, height: 3.2, weight: 4, leaves: 0, barkTint: 0x332c27, leafTint: 0x000000 },
 ];
+
+/** Daytime: every tree in leaf and lit brightly. Pines stay evergreen; the rest take the green leaf palette. */
+const DAY_SPECS: Spec[] = NIGHT_SPECS.map((s) => {
+  const pine = s.preset.startsWith('Pine');
+  const aspen = s.preset.startsWith('Aspen');
+  return {
+    ...s,
+    leaves: s.leaves || 0.75,
+    barkTint: aspen ? 0xcfc8b8 : pine ? 0x7a6450 : 0x6e5a48,
+    leafTint: pine ? 0x4f9a3a : 0xffffff,
+    autumn: !pine,
+  };
+});
+const SPECS = DAY ? DAY_SPECS : NIGHT_SPECS;
 
 const MAX_SECTIONS = [8, 4, 3, 2];
 const MAX_SEGMENTS = [6, 4, 3, 3];
@@ -107,7 +122,7 @@ export function generateTreeVariants(): TreeVariant[] {
         #endif`,
       );
     };
-    leafMat.emissive.set(spec.autumn ? 0x2a1709 : 0x0d1a0f);
+    leafMat.emissive.set(DAY ? 0x0a1a08 : spec.autumn ? 0x2a1709 : 0x0d1a0f);
 
     out.push({
       weight: spec.weight,

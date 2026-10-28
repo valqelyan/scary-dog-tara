@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Forest } from '../forest';
 import type { Player } from '../player';
+import { DAY } from '../mode';
 import { angleDiff, approach, rand } from '../util';
 import { Alert } from './behaviors/alert';
 import { Behavior, type Frame } from './behaviors/behavior';
@@ -401,7 +402,7 @@ export class DogBrain {
     p.headTurn = b.watching ? Math.max(-1, Math.min(1, angleDiff(bearing, this.heading))) : 0;
     // Eyeshine: strongest when she faces the player, and only once she is far enough away to need it.
     const facing = Math.cos(angleDiff(bearing, this.heading));
-    p.eyeGlow = Math.max(0, Math.min(1, (facing - 0.2) / 0.6)) * Math.max(0, Math.min(1, (f.playerDist - 4) / 5));
+    p.eyeGlow = DAY ? 0 : Math.max(0, Math.min(1, (facing - 0.2) / 0.6)) * Math.max(0, Math.min(1, (f.playerDist - 4) / 5));
     p.viewDist = f.playerDist;
 
     // How fast she is turning, smoothed, and where she is heading versus where she faces, so the head can lead.

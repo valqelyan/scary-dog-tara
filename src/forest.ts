@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { hash2 } from './rng';
+import { DAY } from './mode';
 import { generateTreeVariants, type TreeVariant } from './eztrees';
 import type { RockVariant } from './rocks';
 import {
@@ -15,6 +16,9 @@ import {
   Puddle,
   makeGroundMaterial,
 } from './cover';
+
+/** Rocks are shaded very dark for the flashlight; in daylight they need lifting to read as grey stone. */
+const DAY_ROCK_GAIN = 5;
 
 type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
 
@@ -43,6 +47,8 @@ interface Prop {
 
 const CELL = 4.5;
 const RADIUS = 8;
+/** Props are built out to RADIUS cells, so this far is always populated whichever way you face. Fog should be solid by here or trees visibly pop in. */
+export const DRAW_DISTANCE = (RADIUS - 1) * CELL;
 const START_CLEAR = 4;
 const TAU = Math.PI * 2;
 const GROUND_SIZE = 180;
@@ -229,7 +235,9 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     const gz = oz + h(k + 2) * CELL;
     if (inWater(gx, gz)) continue;
     if (nearbyRocks.some((r) => (gx - r.x) ** 2 + (gz - r.z) ** 2 < (0.5 * r.sx + ROCK_GRASS_MARGIN) ** 2)) continue;
-    add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s, sy: 0.6 + h(k + 4) * 1.0, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
+    // Mostly short tufts with a few tall ones, taller where the grass is lush, so the floor isn't one even lawn.
+    const sy = 0.22 + 1.5 * Math.min(1, h(k + 4) ** 2.2 * (0.7 + 0.8 * lush));
+    add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s * (1.15 - 0.3 * sy / 1.7), sy, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
   }
 
   const ownPuddle = cellPuddle(ix, iz);
@@ -304,11 +312,11 @@ export class Forest {
     for (const v of this.variants) {
       const meshes = [this.makeMesh(v.branchGeo, v.branchMat, cellCount * 2)];
       if (v.leafGeo && v.leafMat) meshes.push(this.makeMesh(v.leafGeo, v.leafMat, cellCount * 2));
-      this.trees.push({ meshes, tintMesh: v.leafPalette && meshes.length > 1 ? 1 : -1, tintScale: 0.45, hideableLeaves: meshes.length > 1 });
+      this.trees.push({ meshes, tintMesh: v.leafPalette && meshes.length > 1 ? 1 : -1, tintScale: DAY ? 1 : 0.45, hideableLeaves: meshes.length > 1 });
     }
     for (const kind of COVER_KINDS) {
       const c = COVER[kind];
-      this.cover[kind] = { meshes: [this.makeMesh(c.geometry(), c.material(), cellCount * c.perCell)], tintMesh: c.tinted ? 0 : -1, tintScale: kind === 'grass' ? 0.5 : 0.75 };
+      this.cover[kind] = { meshes: [this.makeMesh(c.geometry(), c.material(), cellCount * c.perCell)], tintMesh: c.tinted ? 0 : -1, tintScale: DAY ? 1 : kind === 'grass' ? 0.5 : 0.75 };
     }
 
     const gGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
@@ -323,8 +331,8 @@ export class Forest {
   private makeWall(): THREE.Mesh {
     const geo = new THREE.CylinderGeometry(WORLD_RADIUS, WORLD_RADIUS, WALL_HEIGHT, 128, 1, true);
     geo.translate(0, WALL_HEIGHT / 2 - 1, 0);
-    // Seen from inside only; it is lit by the flashlight and fades into the fog like everything else.
-    const mat = new THREE.MeshStandardMaterial({ color: 0x0b0e12, roughness: 1, metalness: 0, side: THREE.BackSide });
+    // Seen from inside only; it is lit by the flashlight (or the sun) and fades into the fog like everything else.
+    const mat = new THREE.MeshStandardMaterial({ color: DAY ? 0x7d8a72 : 0x0b0e12, roughness: 1, metalness: 0, side: THREE.BackSide });
     const wall = new THREE.Mesh(geo, mat);
     wall.frustumCulled = false;
     return wall;
@@ -341,7 +349,7 @@ export class Forest {
 
   setRocks(variants: RockVariant[]): void {
     for (const v of variants) {
-      this.rocks.push({ meshes: [this.makeMesh(v.geo, v.mat, this.cellCount * 2)], tintMesh: -1, tintScale: 1, gain: v.gain });
+      this.rocks.push({ meshes: [this.makeMesh(v.geo, v.mat, this.cellCount * 2)], tintMesh: -1, tintScale: 1, gain: v.gain * (DAY ? DAY_ROCK_GAIN : 1) });
     }
     this.cx = Number.NaN;
   }

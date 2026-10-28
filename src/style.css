@@ -231,3 +231,18 @@ body:not(.touch) .touch-only {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.22);
 }
+
+/* ?mode=day: no dark vignette, no flashlight battery, and a lighter title screen. */
+body.day #vignette,
+body.day #battery {
+  display: none;
+}
+
+body.day #overlay {
+  background: rgba(24, 44, 32, 0.6);
+}
+
+body.day #overlay h1 {
+  color: #f2e6c4;
+  text-shadow: 0 0 24px rgba(255, 240, 190, 0.4);
+}

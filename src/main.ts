@@ -1,6 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
-import { Forest } from './forest';
+import { DRAW_DISTANCE, Forest } from './forest';
 import { buildRock } from './cover';
 import { loadRocks } from './rocks';
 import { Player } from './player';
@@ -10,16 +10,18 @@ import { Stalker } from './stalker';
 import { GameAudio } from './audio';
 import { hash2 } from './rng';
 import { approach } from './util';
+import { canvasTexture, newCanvas } from './gfx';
 import { buildMoon } from './moon';
 import { createStats } from './stats';
 import { GameState, NIGHT_LENGTH } from './gamestate';
 import { Battery } from './battery';
 import { BatteryHud } from './batteryhud';
+import { DAY } from './mode';
 
 /** Off by default, so you can just explore: no stalker, eyes, false alarms, twig snaps or dawn ending. Add ?horror to the URL to turn it all on. */
-const HORROR = new URLSearchParams(location.search).has('horror');
+const HORROR = !DAY && new URLSearchParams(location.search).has('horror');
 
-const FOG_COLOR = 0x06090c;
+const FOG_COLOR = DAY ? 0xf0e6c8 : 0x06090c;
 const FLASH_BASE = 260;
 const FOG_DENSITY = 0.052;
 const DAWN_COLOR = new THREE.Color(0x5b6f80);
@@ -35,8 +37,10 @@ const staminaEl = document.getElementById('stamina') as HTMLElement;
 const staminaBar = staminaEl.firstElementChild as HTMLElement;
 const batteryEl = document.getElementById('battery') as HTMLElement;
 const startBtn = document.getElementById('start') as HTMLButtonElement;
+if (DAY) subEl.textContent = 'A walk in the woods, in the daylight.';
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 document.body.classList.toggle('touch', isTouch);
+document.body.classList.toggle('day', DAY);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -46,28 +50,52 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 // Compress hot spots so things close to the flashlight do not clip to white.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = DAY ? 1.0 : 1.15;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(FOG_COLOR);
-scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
+// Night fog is thick enough to hide the edge of the forest. Day fog is thin, so it is linear and ends exactly at the draw distance.
+scene.fog = DAY ? new THREE.Fog(FOG_COLOR, DRAW_DISTANCE * 0.2, DRAW_DISTANCE) : new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
 
 const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 500);
 scene.add(camera);
 
-const hemi = new THREE.HemisphereLight(0x3a4f70, 0x0a0f0a, 1.1);
+const hemi = DAY ? new THREE.HemisphereLight(0xfff3dc, 0x6f7f4a, 2.3) : new THREE.HemisphereLight(0x3a4f70, 0x0a0f0a, 1.1);
 scene.add(hemi);
-const moonLight = new THREE.DirectionalLight(0x6f86b8, 0.9);
-moonLight.position.set(-30, 40, -45);
+// The moon at night, the sun by day.
+const moonLight = DAY ? new THREE.DirectionalLight(0xffe2a8, 2.8) : new THREE.DirectionalLight(0x6f86b8, 0.9);
+if (DAY) moonLight.position.set(45, 70, 30);
+else moonLight.position.set(-30, 40, -45);
 scene.add(moonLight);
 
-const flashlight = new THREE.SpotLight(0xffe8c4, FLASH_BASE, 34, 0.62, 1, 1.3);
+const flashlight = new THREE.SpotLight(0xffe8c4, DAY ? 0 : FLASH_BASE, 34, 0.62, 1, 1.3);
 flashlight.position.set(0.15, -0.12, 0);
 flashlight.target.position.set(0, -0.05, -6);
 camera.add(flashlight, flashlight.target);
 
+/** A soft white-yellow disc that stays put in the sky, like the stars and moon do. */
+function buildSun(): THREE.Sprite {
+  const size = 128;
+  const { canvas, ctx } = newCanvas(size);
+  const glow = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  glow.addColorStop(0, 'rgba(255,255,240,1)');
+  glow.addColorStop(0.18, 'rgba(255,248,215,1)');
+  glow.addColorStop(0.3, 'rgba(255,230,160,0.6)');
+  glow.addColorStop(0.6, 'rgba(255,226,150,0.18)');
+  glow.addColorStop(1, 'rgba(255,230,160,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, size, size);
+  const sun = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: canvasTexture(canvas, { srgb: true }), fog: false, transparent: true, depthWrite: false, toneMapped: false }),
+  );
+  sun.position.copy(moonLight.position).normalize().multiplyScalar(280);
+  sun.scale.setScalar(170);
+  return sun;
+}
+
 const sky = new THREE.Group();
-{
+if (DAY) sky.add(buildSun());
+else {
   const n = 350;
   const pts = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
@@ -132,6 +160,7 @@ scene.add(stalker.group);
 stalker.group.visible = HORROR;
 const audio = new GameAudio();
 audio.twigSnaps = HORROR;
+audio.calm = DAY;
 const game = new GameState();
 const battery = new Battery();
 const batteryHud = new BatteryHud(batteryEl);
@@ -246,7 +275,7 @@ function pause(): void {
   if (!game.running || game.phase !== 'play') return;
   endRun();
   audio.pause();
-  showOverlay('PAUSED', 'It is still out there.', 'Resume');
+  showOverlay('PAUSED', DAY ? 'Take your time.' : 'It is still out there.', 'Resume');
 }
 
 startBtn.addEventListener('click', begin);
@@ -269,6 +298,7 @@ function caught(): void {
 
 const tmpColor = new THREE.Color();
 function applyAtmosphere(threat: number, dawn: number): void {
+  if (DAY) return;
   tmpColor.copy(NIGHT_COLOR).lerp(DAWN_COLOR, dawn);
   (scene.background as THREE.Color).copy(tmpColor);
   const fog = scene.fog as THREE.FogExp2;
@@ -341,8 +371,10 @@ function updatePlay(dt: number): void {
   audio.tick(dt, threat);
   applyAtmosphere(threat, dawn);
 
-  flashlight.intensity = FLASH_BASE * battery.update(dt, threat);
-  batteryHud.update(battery);
+  if (!DAY) {
+    flashlight.intensity = FLASH_BASE * battery.update(dt, threat);
+    batteryHud.update(battery);
+  }
 
   if (threat > 0.3) {
     const s = (threat - 0.3) * 0.012;

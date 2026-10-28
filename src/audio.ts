@@ -13,6 +13,8 @@ export class GameAudio {
   private dripTimer = 1.5;
   /** Twigs snapping out in the dark, now and then. */
   twigSnaps = true;
+  /** Daytime: just the wind. No low drone, dripping or crows. */
+  calm = false;
   private crowTimer = 10 + Math.random() * 15;
   private flockCooldown = 0;
   private wasIntense = false;
@@ -86,6 +88,8 @@ export class GameAudio {
 
     layer('lowpass', 520, 0.16, 0.07, 0.09);
     layer('bandpass', 1300, 0.05, 0.12, 0.04);
+
+    if (this.calm) return;
 
     for (const [freq, gain, type] of [
       [43, 0.06, 'sine'],
@@ -384,6 +388,7 @@ export class GameAudio {
         this.beatTimer = 60 / (62 + 95 * threat);
       }
     }
+    if (this.calm) return;
     this.dripTimer -= dt;
     if (this.dripTimer <= 0) {
       this.drip();
