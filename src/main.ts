@@ -17,6 +17,7 @@ import { GameState, NIGHT_LENGTH } from './gamestate';
 import { Battery } from './battery';
 import { BatteryHud } from './batteryhud';
 import { DAY } from './mode';
+import { loadPlants } from './plants';
 
 /** Off by default, so you can just explore: no stalker, eyes, false alarms, twig snaps or dawn ending. Add ?horror to the URL to turn it all on. */
 const HORROR = !DAY && new URLSearchParams(location.search).has('horror');
@@ -135,6 +136,14 @@ loadRocks()
     console.warn('[rocks] failed to load, using fallback', err);
     forest.setRocks([{ geo: buildRock(), mat: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), gain: 1 }]);
   });
+
+// The scanned plants load in the background too; until they arrive (or if they can't) that ground cover is simply missing.
+loadPlants({ name: 'grass_medium_01', scale: [5, 5, 5], triangles: 400, maxError: 0.02 })
+  .then((variants) => forest.setScattered('grass', variants))
+  .catch((err) => console.warn('[grass] failed to load', err));
+loadPlants({ name: 'celandine_01', scale: [6, 3, 6], triangles: 300, maxError: 0.05 })
+  .then((variants) => forest.setScattered('celandine', variants))
+  .catch((err) => console.warn('[celandine] failed to load', err));
 
 const player = new Player(
   canvas,

@@ -3,14 +3,10 @@ import { hash2 } from './rng';
 import { DAY } from './mode';
 import { generateTreeVariants, type TreeVariant } from './eztrees';
 import type { RockVariant } from './rocks';
+import type { PlantVariant } from './plants';
 import {
   CoverType,
-  Flower,
-  FLOWER_COLORS,
-  GRASS_COLORS,
-  GRASS_PER_CELL,
   GROUND_TILE,
-  Grass,
   Log,
   Mushroom,
   Puddle,
@@ -23,7 +19,10 @@ const DAY_ROCK_GAIN = 5;
 /** The ground photo is dark brown soil: greened by day to offset the warm sun and fog, and left dim under the flashlight at night. */
 const GROUND_TINT = DAY ? 0xb4d890 : 0x9a9a9a;
 
-type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
+type Kind = 'tree' | 'rock' | 'grass' | 'celandine' | 'puddle' | 'mushroom' | 'log';
+/** Kinds drawn from scanned Poly Haven plants, which load in the background. */
+type ScatteredKind = 'grass' | 'celandine';
+const SCATTERED_KINDS: ScatteredKind[] = ['grass', 'celandine'];
 
 /** Something the dog can investigate. `r` is the trunk radius, or a puddle's rough radius. */
 export interface Poi {
@@ -69,13 +68,11 @@ const WALL_HEIGHT = 40;
 
 const beyondWall = (x: number, z: number) => x * x + z * z > WORLD_RADIUS * WORLD_RADIUS;
 
-type CoverKind = Exclude<Kind, 'tree' | 'rock'>;
+type CoverKind = Exclude<Kind, 'tree' | 'rock' | ScatteredKind>;
 
 const COVER: Record<CoverKind, CoverType> = {
-  grass: new Grass(),
   puddle: new Puddle(),
   mushroom: new Mushroom(),
-  flower: new Flower(),
   log: new Log(),
 };
 const COVER_KINDS = Object.keys(COVER) as CoverKind[];
@@ -146,6 +143,15 @@ function cellRocks(ix: number, iz: number): RockSpot[] {
 
 /** Rock models are scaled so their widest side is 1 unit; grass keeps this much clear beyond that. */
 const ROCK_GRASS_MARGIN = 0.2;
+/** Most tufts a cell can hold, which sizes the grass buffers. */
+const GRASS_PER_CELL = 40;
+/**
+ * Fraction of those tufts that are actually placed. A scanned clump is ~1.6k triangles (about 30 times a plain
+ * tuft), so each one stands in for several; 1 would be over 5M triangles a frame.
+ */
+const GRASS_DENSITY = 1;
+/** Most celandine patches a cell can hold. Each is about a metre of leafy carpet. */
+const CELANDINE_PER_CELL = 14;
 /** Clear space between a trunk and the edge of a rock. */
 const ROCK_TREE_MARGIN = 0.15;
 
@@ -243,7 +249,7 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
   for (const r of rocks) add({ kind: 'rock', ...r, r: 0.42 * r.sx });
 
   const lush = Math.max(0, Math.min(1, (patchNoise(ix, iz, 0.18, 400) * 0.7 + patchNoise(ix, iz, 0.55, 401) * 0.3 - 0.32) * 2.2));
-  const tufts = Math.min(GRASS_PER_CELL, 2 + Math.round(lush * 34 * (0.7 + 0.6 * h(70))));
+  const tufts = Math.round(Math.min(GRASS_PER_CELL, 2 + Math.round(lush * 34 * (0.7 + 0.6 * h(70)))) * GRASS_DENSITY);
   for (let i = 0; i < tufts; i++) {
     const k = 1000 + i * 6;
     const s = 0.8 + h(k) * 0.9;
@@ -253,7 +259,18 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     if (onRock(gx, gz, ROCK_GRASS_MARGIN)) continue;
     // Mostly short tufts with a few tall ones, taller where the grass is lush, so the floor isn't one even lawn.
     const sy = 0.22 + 1.5 * Math.min(1, h(k + 4) ** 2.2 * (0.7 + 0.8 * lush));
-    add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s * (1.15 - 0.3 * sy / 1.7), sy, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
+    add({ kind: 'grass', variant: Math.floor(h(k + 7) * 1000), x: gx, z: gz, ry: h(k + 3) * TAU, sx: s * (1.15 - 0.3 * sy / 1.7), sy, shade: 0.7 + 0.5 * h(k + 5) });
+  }
+
+  // Patches of leafy ground cover, clumped by their own noise so some stretches are carpeted and others bare.
+  const leafy = Math.max(0.3, Math.min(1, (patchNoise(ix, iz, 0.3, 430) - 0.2) * 2.5));
+  const patches = Math.round(leafy * CELANDINE_PER_CELL * (0.7 + 0.6 * h(80)));
+  for (let i = 0; i < patches; i++) {
+    const k = 2000 + i * 6;
+    const px = ox + h(k + 1) * CELL;
+    const pz = oz + h(k + 2) * CELL;
+    if (inWater(px, pz) || onRock(px, pz, 0.5)) continue;
+    add({ kind: 'celandine', variant: Math.floor(h(k + 3) * 1000), x: px, z: pz, ry: h(k + 4) * TAU, sx: 1 + 0.7 * h(k), sy: 0.6 + 0.5 * h(k + 5), shade: 0.8 + 0.4 * h(k + 5) });
   }
 
   const ownPuddle = cellPuddle(ix, iz);
@@ -263,19 +280,6 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     const x = ox + h(211) * CELL;
     const z = oz + h(212) * CELL;
     if (!inWater(x, z)) add({ kind: 'mushroom', x, z, ry: h(213) * TAU, sx: 0.8 + h(214) * 0.8, sy: 0.8 + h(215) * 0.8, shade: 0.8 + 0.4 * h(216) });
-  }
-
-  if (h(220) < 0.12) {
-    const n = 1 + Math.floor(h(221) * 3);
-    const cx = ox + h(222) * CELL;
-    const cz = oz + h(223) * CELL;
-    const tint = pick(FLOWER_COLORS, h(224));
-    for (let i = 0; i < n; i++) {
-      const fx = cx + (h(225 + i) - 0.5) * 0.6;
-      const fz = cz + (h(230 + i) - 0.5) * 0.6;
-      if (inWater(fx, fz)) continue;
-      add({ kind: 'flower', x: fx, z: fz, ry: h(235 + i) * TAU, sx: 0.8 + h(240 + i) * 0.6, sy: 0.7 + h(245 + i) * 0.7, shade: 0.9, tint });
-    }
   }
 
   if (h(250) < 0.07) {
@@ -309,6 +313,8 @@ export class Forest {
   private totalWeight: number;
   private trees: Batch[] = [];
   private rocks: Batch[] = [];
+  /** Scanned plants, once loaded, one batch per variant. */
+  private scattered: Record<ScatteredKind, Batch[]> = { grass: [], celandine: [] };
   private cover = {} as Record<CoverKind, Batch>;
   private ground: THREE.Mesh;
   private groundMaps: THREE.Texture[];
@@ -332,7 +338,7 @@ export class Forest {
     }
     for (const kind of COVER_KINDS) {
       const c = COVER[kind];
-      this.cover[kind] = { meshes: [this.makeMesh(c.geometry(), c.material(), cellCount * c.perCell)], tintMesh: c.tinted ? 0 : -1, tintScale: DAY ? 1 : kind === 'grass' ? 0.5 : 0.75 };
+      this.cover[kind] = { meshes: [this.makeMesh(c.geometry(), c.material(), cellCount * c.perCell)], tintMesh: c.tinted ? 0 : -1, tintScale: DAY ? 1 : 0.75 };
     }
 
     const gGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
@@ -370,6 +376,14 @@ export class Forest {
     this.cx = Number.NaN;
   }
 
+  setScattered(kind: ScatteredKind, variants: PlantVariant[]): void {
+    const perCell = kind === 'grass' ? GRASS_PER_CELL : CELANDINE_PER_CELL;
+    for (const v of variants) {
+      this.scattered[kind].push({ meshes: [this.makeMesh(v.geo, v.mat, this.cellCount * perCell)], tintMesh: -1, tintScale: 1 });
+    }
+    this.cx = Number.NaN;
+  }
+
   private getCell(ix: number, iz: number): Prop[] {
     const key = cellKey(ix, iz);
     let c = this.cells.get(key);
@@ -398,6 +412,8 @@ export class Forest {
     const next = new Map<number, Prop[]>();
     const treeCounts = this.trees.map(() => 0);
     const rockCounts = this.rocks.map(() => 0);
+    const scatteredCounts = {} as Record<ScatteredKind, number[]>;
+    for (const k of SCATTERED_KINDS) scatteredCounts[k] = this.scattered[k].map(() => 0);
     const coverCounts = {} as Record<CoverKind, number>;
     for (const k of COVER_KINDS) coverCounts[k] = 0;
     const { dummy, color } = this;
@@ -431,6 +447,11 @@ export class Forest {
             if (this.rocks.length === 0) continue;
             const v = p.variant % this.rocks.length;
             place(this.rocks[v], rockCounts[v]++, p);
+          } else if (p.kind === 'grass' || p.kind === 'celandine') {
+            const batches = this.scattered[p.kind];
+            if (batches.length === 0) continue;
+            const v = p.variant % batches.length;
+            place(batches[v], scatteredCounts[p.kind][v]++, p);
           } else place(this.cover[p.kind], coverCounts[p.kind]++, p);
         }
       }
@@ -446,6 +467,7 @@ export class Forest {
     };
     this.trees.forEach((b, i) => commit(b, treeCounts[i]));
     this.rocks.forEach((b, i) => commit(b, rockCounts[i]));
+    for (const k of SCATTERED_KINDS) this.scattered[k].forEach((b, i) => commit(b, scatteredCounts[k][i]));
     for (const k of COVER_KINDS) commit(this.cover[k], coverCounts[k]);
   }
 
