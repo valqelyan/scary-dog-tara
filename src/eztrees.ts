@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Tree, TreePreset } from '@dgreenheck/ez-tree';
 import { AUTUMN_LEAVES } from './cover';
 import { DAY } from './mode';
+import { shrinkTexture } from './texsize';
 
 export interface TreeVariant {
   weight: number;
@@ -106,9 +107,13 @@ export function generateTreeVariants(): TreeVariant[] {
     if (hasLeaves) bake(leafGeo);
 
     const branchMat = tree.branchesMesh.material as THREE.MeshPhongMaterial;
+    // The bark's ambient-occlusion map is a full-size texture that only darkens the creases a little.
+    branchMat.aoMap = null;
+    for (const tex of [branchMat.map, branchMat.normalMap]) if (tex) shrinkTexture(tex);
     branchMat.shininess = 22;
     branchMat.specular.setScalar(0.14);
     const leafMat = tree.leavesMesh.material as THREE.MeshPhongMaterial;
+    if (leafMat.map) shrinkTexture(leafMat.map);
     leafMat.shininess = 14;
     leafMat.specular.setScalar(0.08);
     // ez-tree's wind shader replaces <project_vertex> and skips the instance matrix, which

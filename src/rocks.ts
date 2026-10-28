@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { simplify, simplifierReady } from './simplify';
+import { shrinkTexture } from './texsize';
 
 export interface RockVariant {
   geo: THREE.BufferGeometry;
@@ -52,8 +53,16 @@ export async function loadRocks(): Promise<RockVariant[]> {
 
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.side = THREE.FrontSide;
+      // The packed roughness/metal map is a full-size texture for a surface that is uniformly rough stone.
       mat.roughness = 0.7;
-      for (const tex of [mat.map, mat.normalMap, mat.roughnessMap]) if (tex) tex.anisotropy = 8;
+      mat.roughnessMap = null;
+      mat.metalnessMap = null;
+      mat.metalness = 0;
+      for (const tex of [mat.map, mat.normalMap]) {
+        if (!tex) continue;
+        tex.anisotropy = 8;
+        shrinkTexture(tex);
+      }
       out.push({ geo, mat, gain });
     });
   }

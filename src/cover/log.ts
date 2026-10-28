@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { shrinkTexture } from '../texsize';
 import { CoverType } from './covertype';
 
 function buildLog(): THREE.BufferGeometry {
@@ -21,13 +22,13 @@ function makeBarkMaterial(): THREE.MeshStandardMaterial {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(1, 3);
     t.anisotropy = 8;
+    shrinkTexture(t);
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;
     return t;
   };
   return new THREE.MeshStandardMaterial({
     map: load('log_diff.jpg', true),
     normalMap: load('log_nor.jpg', false),
-    roughnessMap: load('log_rough.jpg', false),
     color: 0x45362b,
     roughness: 0.9,
     metalness: 0,

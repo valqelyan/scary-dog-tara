@@ -88,6 +88,8 @@ export async function loadPlants({ name, scale, triangles, maxError }: PlantSpec
     // Matte: the packed roughness map makes the leaves shiny under the sun, which washes them out pale.
     mat.roughnessMap = null;
     mat.metalnessMap = null;
+    // The cutout cards are thin and the photo already has the veins painted in, so the bump map is invisible and costs a full texture.
+    mat.normalMap = null;
     mat.roughness = 1;
     mat.metalness = 0;
     mat.color.setScalar(0.75);
