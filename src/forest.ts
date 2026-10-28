@@ -20,6 +20,9 @@ import {
 /** Rocks are shaded very dark for the flashlight; in daylight they need lifting to read as grey stone. */
 const DAY_ROCK_GAIN = 5;
 
+/** The ground photo is dark brown soil: greened by day to offset the warm sun and fog, and left dim under the flashlight at night. */
+const GROUND_TINT = DAY ? 0xb4d890 : 0x9a9a9a;
+
 type Kind = 'tree' | 'rock' | 'grass' | 'puddle' | 'mushroom' | 'flower' | 'log';
 
 /** Something the dog can investigate. `r` is the trunk radius, or a puddle's rough radius. */
@@ -329,7 +332,7 @@ export class Forest {
 
     const gGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
     gGeo.rotateX(-Math.PI / 2);
-    const ground = makeGroundMaterial(GROUND_SIZE);
+    const ground = makeGroundMaterial(GROUND_SIZE, GROUND_TINT);
     this.groundMaps = ground.maps;
     this.ground = new THREE.Mesh(gGeo, ground.material);
     this.group.add(this.ground);
