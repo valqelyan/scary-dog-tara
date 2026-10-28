@@ -30,6 +30,14 @@ export interface Poi {
   r: number;
 }
 
+/** A trunk the player could climb: where it stands, how thick it is and how tall. */
+export interface TreeSpot {
+  x: number;
+  z: number;
+  r: number;
+  height: number;
+}
+
 interface Prop {
   kind: Kind;
   variant: number;
@@ -446,6 +454,24 @@ export class Forest {
           if (beyondWall(p.x, p.z)) continue;
           if ((p.x - x) ** 2 + (p.z - z) ** 2 > radius * radius) continue;
           out.push({ kind: p.kind, x: p.x, z: p.z, r: p.kind === 'tree' ? p.r : 0.75 * Math.sqrt(p.sx * p.sz) });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Trees whose trunk surface is within `reach` of a point. */
+  treesNear(x: number, z: number, reach: number): TreeSpot[] {
+    const out: TreeSpot[] = [];
+    const ix = Math.floor(x / CELL);
+    const iz = Math.floor(z / CELL);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        for (const p of this.getCell(ix + dx, iz + dz)) {
+          if (p.kind !== 'tree' || beyondWall(p.x, p.z)) continue;
+          const lim = p.r + reach;
+          if ((p.x - x) ** 2 + (p.z - z) ** 2 > lim * lim) continue;
+          out.push({ x: p.x, z: p.z, r: p.r, height: this.variants[p.variant].height * p.sy });
         }
       }
     }

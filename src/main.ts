@@ -36,6 +36,7 @@ const flashEl = document.getElementById('flash') as HTMLElement;
 const staminaEl = document.getElementById('stamina') as HTMLElement;
 const staminaBar = staminaEl.firstElementChild as HTMLElement;
 const batteryEl = document.getElementById('battery') as HTMLElement;
+const climbEl = document.getElementById('climb') as HTMLElement;
 const startBtn = document.getElementById('start') as HTMLButtonElement;
 if (DAY) subEl.textContent = 'A walk in the woods, in the daylight.';
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -177,6 +178,8 @@ player.onStep = (sprinting) => {
 };
 player.onJump = () => audio.step(0.25, 0.7, 0);
 player.onLand = () => audio.step(0.55, 0.6, 0);
+player.onGrab = () => audio.step(0.3, 0.55, 0);
+player.onRung = () => audio.step(0.14, 0.7 + Math.random() * 0.2, 0);
 dog.onStep = () => {
   const dx = dog.pos.x - player.pos.x;
   const dz = dog.pos.z - player.pos.z;
@@ -249,6 +252,7 @@ function resetRun(): void {
   batteryHud.reset(battery);
   growlT = 0;
   player.frozen = false;
+  player.dismount();
   player.stamina = 1;
   player.pitch = 0;
   stalker.reset();
@@ -278,6 +282,10 @@ function pause(): void {
   showOverlay('PAUSED', DAY ? 'Take your time.' : 'It is still out there.', 'Resume');
 }
 
+climbEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  player.requestClimb();
+});
 startBtn.addEventListener('click', begin);
 document.addEventListener('pointerlockchange', () => {
   if (!isTouch && document.pointerLockElement !== canvas) pause();
@@ -382,6 +390,12 @@ function updatePlay(dt: number): void {
     camera.rotation.y += (Math.random() - 0.5) * s;
   }
 
+  const climbHint = player.climbing ? 'let go' : player.climbTarget(forest) ? 'climb' : '';
+  if (climbEl.dataset.mode !== climbHint) {
+    climbEl.dataset.mode = climbHint;
+    climbEl.textContent = climbHint ? (isTouch ? climbHint : `E · ${climbHint}`) : '';
+    climbEl.classList.toggle('show', climbHint !== '');
+  }
   staminaBar.style.transform = `scaleX(${player.stamina.toFixed(3)})`;
   staminaEl.style.opacity = player.stamina < 0.98 ? '1' : '0';
 

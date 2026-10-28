@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Forest } from './forest';
+import type { Forest, TreeSpot } from './forest';
 
 const EYE_HEIGHT = 1.7;
 const STEP_LENGTH = 1.3;
@@ -9,6 +9,21 @@ const STICK_RADIUS = 55;
 const GRAVITY = 12;
 const JUMP_SPEED = 3.4;
 const JUMP_STAMINA = 0.08;
+const CLIMB_REACH = 1.2;
+const CLIMB_MIN_HEIGHT = 6;
+/** How far up the trunk the eyes can get, as a fraction of its height. */
+const CLIMB_TOP = 0.8;
+const CLIMB_UP = 1.5;
+const CLIMB_DOWN = 2;
+const CLIMB_CIRCLE = 1.2;
+const CLIMB_GAP = 0.45;
+const CLIMB_RUNG = 0.6;
+const CLIMB_MIN_STAMINA = 0.15;
+/** Stamina per second: pulling up, lowering, and just hanging on. */
+const CLIMB_COST_UP = 0.1;
+const CLIMB_COST_DOWN = 0.02;
+const CLIMB_COST_HOLD = 0.03;
+const PUSH_OFF = 1.8;
 const TAP_MS = 250;
 const TAP_SLOP = 14;
 
@@ -25,10 +40,16 @@ export class Player {
   onStep?: (sprinting: boolean) => void;
   onJump?: () => void;
   onLand?: () => void;
+  onGrab?: () => void;
+  onRung?: () => void;
 
   private lift = 0;
   private liftVel = 0;
   private jumpQueued = false;
+  private climbQueued = false;
+  private tree: TreeSpot | null = null;
+  private angle = 0;
+  private rung = 0;
   private tapT = 0;
   private tapX = 0;
   private tapY = 0;
@@ -56,6 +77,7 @@ export class Player {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       // Only while the mouse is captured, so Space on a menu button does not queue a jump.
       if (e.code === 'Space' && !e.repeat && document.pointerLockElement === this.canvas) this.jumpQueued = true;
+      if (e.code === 'KeyE' && !e.repeat && document.pointerLockElement === this.canvas) this.climbQueued = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
@@ -140,18 +162,154 @@ export class Player {
   releaseInput(): void {
     this.keys.clear();
     this.jumpQueued = false;
+    this.climbQueued = false;
     this.stickId = this.lookId = -1;
     this.stickX = this.stickY = 0;
     this.stickBase.style.display = 'none';
   }
 
+  /** Grab the trunk in front of you, or let go if you are already on one. */
+  requestClimb(): void {
+    this.climbQueued = true;
+  }
+
+  get climbing(): boolean {
+    return this.tree !== null;
+  }
+
+  /** The trunk you are facing and could grab right now, if any. */
+  climbTarget(forest: Forest): TreeSpot | null {
+    if (this.tree || this.frozen || !this.grounded || this.exhausted || this.stamina < CLIMB_MIN_STAMINA) return null;
+    const fx = -Math.sin(this.yaw);
+    const fz = -Math.cos(this.yaw);
+    let best: TreeSpot | null = null;
+    let bestDot = 0.6;
+    for (const t of forest.treesNear(this.pos.x, this.pos.z, CLIMB_REACH)) {
+      if (t.height < CLIMB_MIN_HEIGHT) continue;
+      const dx = t.x - this.pos.x;
+      const dz = t.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 1e-4) continue;
+      const dot = (dx * fx + dz * fz) / d;
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  /** Drop off any trunk and stand on the ground. */
+  dismount(): void {
+    this.tree = null;
+    this.lift = 0;
+    this.liftVel = 0;
+  }
+
+  private grab(t: TreeSpot): void {
+    this.tree = t;
+    this.angle = Math.atan2(this.pos.x - t.x, this.pos.z - t.z);
+    this.vel.set(0, 0, 0);
+    this.speed = 0;
+    this.rung = 0;
+    this.placeOnTrunk();
+    this.onGrab?.();
+  }
+
+  private placeOnTrunk(): void {
+    const t = this.tree!;
+    const d = t.r + CLIMB_GAP;
+    this.pos.x = t.x + Math.sin(this.angle) * d;
+    this.pos.z = t.z + Math.cos(this.angle) * d;
+  }
+
+  /** Let go. Falls from wherever you are; `push` kicks off the trunk first. */
+  private letGo(push: boolean): void {
+    const t = this.tree!;
+    this.tree = null;
+    if (!push || this.lift < 0.3) return;
+    this.liftVel = 1.5;
+    this.vel.set(Math.sin(this.angle) * PUSH_OFF, 0, Math.cos(this.angle) * PUSH_OFF);
+    this.pos.x = t.x + Math.sin(this.angle) * (t.r + CLIMB_GAP);
+    this.pos.z = t.z + Math.cos(this.angle) * (t.r + CLIMB_GAP);
+  }
+
+  private updateClimb(dt: number): void {
+    const t = this.tree!;
+    const k = this.keys;
+    this.speed = 0;
+    this.vel.set(0, 0, 0);
+
+    if (this.climbQueued || this.jumpQueued) {
+      this.letGo(this.jumpQueued);
+      this.jumpQueued = this.climbQueued = false;
+      return;
+    }
+
+    let up = 0;
+    let around = 0;
+    if (k.has('KeyW') || k.has('ArrowUp')) up += 1;
+    if (k.has('KeyS') || k.has('ArrowDown')) up -= 1;
+    if (k.has('KeyD') || k.has('ArrowRight')) around += 1;
+    if (k.has('KeyA') || k.has('ArrowLeft')) around -= 1;
+    if (this.stickId !== -1) {
+      up -= this.stickY;
+      around += this.stickX;
+    }
+    up = Math.max(-1, Math.min(1, up));
+    around = Math.max(-1, Math.min(1, around));
+
+    // Circling the trunk turns the view with you, so you keep facing the bark.
+    const da = (around * CLIMB_CIRCLE * dt) / (t.r + CLIMB_GAP);
+    this.angle += da;
+    this.yaw += da;
+    this.placeOnTrunk();
+
+    const top = Math.max(0, t.height * CLIMB_TOP - EYE_HEIGHT);
+    const before = this.lift;
+    let cost = this.lift > 0.3 ? CLIMB_COST_HOLD : 0;
+    if (up > 0 && this.lift < top) {
+      this.lift = Math.min(top, this.lift + up * CLIMB_UP * dt);
+      cost = CLIMB_COST_UP * up;
+    } else if (up < 0) {
+      this.lift = Math.max(0, this.lift + up * CLIMB_DOWN * dt);
+      cost = CLIMB_COST_DOWN;
+    }
+    this.stamina = Math.max(0, this.stamina - cost * dt);
+
+    const rung = Math.floor(this.lift / CLIMB_RUNG);
+    if (rung !== this.rung && this.lift !== before) this.onRung?.();
+    this.rung = rung;
+
+    if (this.stamina <= 0) {
+      this.exhausted = true;
+      this.letGo(false);
+    } else if (this.lift <= 0 && up < 0) {
+      this.letGo(false);
+    }
+  }
+
   update(dt: number, forest: Forest): void {
     this.time += dt;
+    if (this.frozen && this.tree) this.letGo(false);
+    if (this.tree) {
+      this.updateClimb(dt);
+      return;
+    }
     this.updateJump(dt);
     if (this.frozen) {
+      this.climbQueued = false;
       this.vel.set(0, 0, 0);
       this.speed = 0;
       return;
+    }
+    if (this.climbQueued) {
+      this.climbQueued = false;
+      const t = this.climbTarget(forest);
+      if (t) {
+        this.grab(t);
+        return;
+      }
     }
     const k = this.keys;
     let ax = 0;
@@ -234,7 +392,8 @@ export class Player {
   applyToCamera(camera: THREE.PerspectiveCamera): void {
     const phase = (this.dist / STEP_LENGTH) * Math.PI;
     const amp = this.grounded ? Math.min(1, this.speed / 2.6) : 0;
-    const bob = Math.abs(Math.sin(phase)) * 0.05 * amp + Math.sin(this.time * 1.4) * 0.004;
+    const sway = this.tree ? Math.sin((this.lift / CLIMB_RUNG) * Math.PI) * 0.03 : 0;
+    const bob = Math.abs(Math.sin(phase)) * 0.05 * amp + Math.sin(this.time * 1.4) * 0.004 + sway;
     camera.position.set(this.pos.x, EYE_HEIGHT + bob + this.lift, this.pos.z);
     camera.rotation.set(this.pitch, this.yaw, Math.sin(phase) * 0.006 * amp, 'YXZ');
   }

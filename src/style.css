@@ -73,6 +73,34 @@ body {
   transform-origin: left center;
 }
 
+#climb {
+  position: fixed;
+  left: 50%;
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border: 1px solid rgba(220, 225, 220, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(220, 225, 220, 0.8);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 9;
+}
+
+#climb.show {
+  opacity: 1;
+}
+
+body.touch #climb.show {
+  pointer-events: auto;
+  padding: 12px 22px;
+}
+
 #battery {
   position: fixed;
   top: calc(14px + env(safe-area-inset-top));

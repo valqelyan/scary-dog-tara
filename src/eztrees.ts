@@ -10,6 +10,8 @@ export interface TreeVariant {
   leafGeo: THREE.BufferGeometry | null;
   leafMat: THREE.Material | null;
   trunkRadius: number;
+  /** Trunk height in metres, before the per-tree scale. */
+  height: number;
   leafPalette?: number[];
   leafChance: number;
 }
@@ -130,6 +132,7 @@ export function generateTreeVariants(): TreeVariant[] {
       branchMat,
       leafGeo: hasLeaves ? leafGeo : null,
       leafMat: hasLeaves ? leafMat : null,
+      height: spec.height,
       trunkRadius: Math.max(0.2, tree.options.branch.radius[0] * scale * 0.9),
       leafPalette: spec.autumn && hasLeaves ? AUTUMN_LEAVES : undefined,
       leafChance: spec.autumn ? 0.7 : 0.9,
