@@ -55,6 +55,11 @@ interface Prop {
   leafy: boolean;
 }
 
+/** Every tree is this much bigger than the baked model, in height and in width. */
+const TREE_SIZE = 1.25;
+/** Extra width on top of TREE_SIZE, so trunks and crowns are thick and not just tall. */
+const TREE_GIRTH = 1.3;
+
 const CELL = 4.5;
 const RADIUS = 8;
 /** Props are built out to RADIUS cells, so this far is always populated whichever way you face. Fog should be solid by here or trees visibly pop in. */
@@ -226,9 +231,9 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     if (nearStart(x, z) || inWater(x, z)) continue;
     const variant = pickVariant(variants, total, h(s0 + 4));
     const v = variants[variant];
-    const s = 0.8 + h(s0 + 5) * 0.4;
-    const sx = s * (0.92 + 0.16 * h(s0 + 7));
-    if (onRock(x, z, v.trunkRadius * s + ROCK_TREE_MARGIN)) continue;
+    const s = (0.8 + h(s0 + 5) * 0.4) * TREE_SIZE;
+    const sx = s * TREE_GIRTH * (0.92 + 0.16 * h(s0 + 7));
+    if (onRock(x, z, v.trunkRadius * sx + ROCK_TREE_MARGIN)) continue;
     add({
       kind: 'tree',
       variant,
@@ -240,7 +245,7 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
       sz: sx,
       shade: 0.7 + 0.4 * h(s0 + 9),
       tint: v.leafPalette ? pick(v.leafPalette, h(s0 + 11)) : 0,
-      r: v.trunkRadius * s,
+      r: v.trunkRadius * sx,
       leafy: h(300 + slot) < v.leafChance,
     });
   }
