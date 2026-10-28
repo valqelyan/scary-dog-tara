@@ -146,6 +146,8 @@ function cellRocks(ix: number, iz: number): RockSpot[] {
 
 /** Rock models are scaled so their widest side is 1 unit; grass keeps this much clear beyond that. */
 const ROCK_GRASS_MARGIN = 0.2;
+/** Clear space between a trunk and the edge of a rock. */
+const ROCK_TREE_MARGIN = 0.15;
 
 interface PuddleSpot {
   x: number;
@@ -205,6 +207,11 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
       ...p,
     });
 
+  // Nothing grows through a rock; a big one can reach over a cell edge, so check the neighbours' rocks too.
+  const nearbyRocks: RockSpot[] = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) nearbyRocks.push(...cellRocks(ix + dx, iz + dz));
+  const onRock = (x: number, z: number, reach: number) => nearbyRocks.some((r) => (x - r.x) ** 2 + (z - r.z) ** 2 < (0.5 * r.sx + reach) ** 2);
+
   for (let slot = 0; slot < 2; slot++) {
     const s0 = slot * 10;
     if (h(s0 + 1) > (slot === 0 ? 0.56 : 0.22)) continue;
@@ -215,6 +222,7 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
     const v = variants[variant];
     const s = 0.8 + h(s0 + 5) * 0.4;
     const sx = s * (0.92 + 0.16 * h(s0 + 7));
+    if (onRock(x, z, v.trunkRadius * s + ROCK_TREE_MARGIN)) continue;
     add({
       kind: 'tree',
       variant,
@@ -236,16 +244,13 @@ function makeCell(ix: number, iz: number, variants: TreeVariant[], total: number
 
   const lush = Math.max(0, Math.min(1, (patchNoise(ix, iz, 0.18, 400) * 0.7 + patchNoise(ix, iz, 0.55, 401) * 0.3 - 0.32) * 2.2));
   const tufts = Math.min(GRASS_PER_CELL, 2 + Math.round(lush * 34 * (0.7 + 0.6 * h(70))));
-  // Nothing grows through a rock; a big one can reach over a cell edge, so check the neighbours' rocks too.
-  const nearbyRocks: RockSpot[] = [];
-  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) nearbyRocks.push(...cellRocks(ix + dx, iz + dz));
   for (let i = 0; i < tufts; i++) {
     const k = 1000 + i * 6;
     const s = 0.8 + h(k) * 0.9;
     const gx = ox + h(k + 1) * CELL;
     const gz = oz + h(k + 2) * CELL;
     if (inWater(gx, gz)) continue;
-    if (nearbyRocks.some((r) => (gx - r.x) ** 2 + (gz - r.z) ** 2 < (0.5 * r.sx + ROCK_GRASS_MARGIN) ** 2)) continue;
+    if (onRock(gx, gz, ROCK_GRASS_MARGIN)) continue;
     // Mostly short tufts with a few tall ones, taller where the grass is lush, so the floor isn't one even lawn.
     const sy = 0.22 + 1.5 * Math.min(1, h(k + 4) ** 2.2 * (0.7 + 0.8 * lush));
     add({ kind: 'grass', x: gx, z: gz, ry: h(k + 3) * TAU, sx: s * (1.15 - 0.3 * sy / 1.7), sy, shade: 0.7 + 0.5 * h(k + 5), tint: pick(GRASS_COLORS, h(k + 6)) });
